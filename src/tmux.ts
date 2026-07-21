@@ -37,12 +37,32 @@ export function newSession(session: string, cwd: string): void {
   tmux(['new-session', '-d', '-s', session, '-n', 'workers', '-c', cwd]);
 }
 
+/** True when this process is itself running inside a tmux pane. */
+export function insideTmux(): boolean {
+  return Boolean(process.env.TMUX);
+}
+
+/** "session:@windowid" of the window this process is running in. */
+export function currentWindow(): string {
+  return tmux(['display-message', '-p', '#{session_name}:#{window_id}']).trim();
+}
+
+export function currentSessionName(): string {
+  return tmux(['display-message', '-p', '#{session_name}']).trim();
+}
+
+/** In-tmux equivalent of `attach`: move the attached client to another session. */
+export function switchClient(session: string): void {
+  tmux(['switch-client', '-t', `=${session}`]);
+}
+
 /**
- * Adds a worker pane. The first worker reuses the empty pane the session was
- * created with, so we never leave a stray idle shell behind.
+ * Adds a worker pane to `window`. `reuseFirst` respawns the placeholder shell
+ * a fresh session starts with, so a dedicated session never keeps a stray idle
+ * pane around; when splitting into a window you already occupy, it is off.
  */
 export function addPane(opts: {
-  session: string;
+  window: string;
   cwd: string;
   env: Record<string, string>;
   command: string;
@@ -51,10 +71,8 @@ export function addPane(opts: {
   const envArgs = Object.entries(opts.env).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
 
   if (opts.reuseFirst) {
-    const pane = tmux(['list-panes', '-t', `${opts.session}:workers`, '-F', '#{pane_id}'])
-      .trim()
-      .split('\n')[0];
-    if (!pane) throw new TmuxError('no pane found in session');
+    const pane = tmux(['list-panes', '-t', opts.window, '-F', '#{pane_id}']).trim().split('\n')[0];
+    if (!pane) throw new TmuxError(`no pane found in ${opts.window}`);
     // respawn-pane cannot set env, so export inline before exec.
     const exports = Object.entries(opts.env)
       .map(([k, v]) => `export ${k}=${shellQuote(v)};`)
@@ -76,7 +94,7 @@ export function addPane(opts: {
   const pane = tmux([
     'split-window',
     '-t',
-    `${opts.session}:workers`,
+    opts.window,
     '-d',
     '-P',
     '-F',
@@ -86,7 +104,7 @@ export function addPane(opts: {
     ...envArgs,
     opts.command,
   ]).trim();
-  tmux(['select-layout', '-t', `${opts.session}:workers`, 'tiled']);
+  tmux(['select-layout', '-t', opts.window, 'tiled']);
   return pane;
 }
 

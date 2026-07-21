@@ -25,6 +25,10 @@ import {
   sendPrompt,
   sendEnter,
   tmux,
+  insideTmux,
+  currentWindow,
+  currentSessionName,
+  switchClient,
 } from './tmux.js';
 import { AGENTS, agentNames, buildCommand, isInstalled } from './agents.js';
 import { cliInvocation, dispatchPrompt } from './preamble.js';
@@ -124,34 +128,58 @@ function cmdUp(args: Args): void {
   console.log(`attach with: tmux attach -t ${s}`);
 }
 
+/**
+ * `--here` splits the caller's own tmux window instead of a dedicated session.
+ * You then watch workers next to your shell with no attaching or switching —
+ * which is the only thing that works when the caller is already inside tmux,
+ * since a client cannot attach to a second session from within one.
+ */
+function here(args: Args): boolean {
+  const requested = bool(args, 'here', false);
+  if (requested && !insideTmux()) fail('--here requires running inside a tmux pane');
+  return requested;
+}
+
 function cmdSpawn(db: DatabaseSync, args: Args): void {
-  const s = session(args);
   const name = need(args, 'name');
   const agent = str(args, 'agent') ?? 'shell';
   const cwd = str(args, 'cwd') ?? process.cwd();
   const autonomous = bool(args, 'autonomous', false) || bool(args, 'yolo', false);
+  const inPlace = here(args);
 
   if (!AGENTS[agent]) fail(`unknown agent "${agent}" (known: ${agentNames().join(', ')})`);
   if (getWorker(db, name)) fail(`worker "${name}" already exists (orchestmux kill --name ${name})`);
   if (!isInstalled(AGENTS[agent]!.cmd)) fail(`agent binary "${AGENTS[agent]!.cmd}" not found on PATH`);
 
-  if (!hasSession(s)) newSession(s, cwd);
+  const s = inPlace ? currentSessionName() : session(args);
+  if (!inPlace && !hasSession(s)) newSession(s, cwd);
+  const window = inPlace ? currentWindow() : `${s}:workers`;
 
-  const existing = listWorkers(db).filter((w) => w.session === s && paneAlive(w.pane_id));
+  // Never respawn a pane someone is sitting in — only the placeholder shell of
+  // a session we created ourselves is fair game.
+  const occupied = listWorkers(db).some((w) => w.window === window && paneAlive(w.pane_id));
   const command = buildCommand(agent, autonomous, args._.slice(1));
   const paneId = addPane({
-    session: s,
+    window,
     cwd,
     env: { ORCHESTMUX_WORKER: name, ORCHESTMUX_SESSION: s },
     command,
-    reuseFirst: existing.length === 0,
+    reuseFirst: !inPlace && !occupied,
   });
 
   db.prepare(
-    `INSERT INTO workers (name, agent, pane_id, session, cwd, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(name, agent, paneId, s, cwd, now());
+    `INSERT INTO workers (name, agent, pane_id, session, window, cwd, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(name, agent, paneId, s, window, cwd, now());
 
-  console.log(`spawned ${name} (${agent}) in pane ${paneId}`);
+  console.log(`spawned ${name} (${agent}) in pane ${paneId}${inPlace ? ' (this window)' : ''}`);
+  if (!inPlace) {
+    console.log(
+      insideTmux()
+        ? `watch it: orchestmux attach   (or re-spawn with --here to split this window instead)`
+        : `watch it: orchestmux attach`,
+    );
+  }
   if (!autonomous && AGENTS[agent]!.autonomousArgs.length > 0) {
     console.log(`hint: this agent will stop for approval prompts — re-spawn with --yolo to let it run unattended`);
   }
@@ -429,20 +457,46 @@ function cmdKill(db: DatabaseSync, args: Args): void {
 }
 
 function cmdDown(db: DatabaseSync, args: Args): void {
-  const s = session(args);
-  for (const w of listWorkers(db)) if (w.session === s) killPane(w.pane_id);
+  const explicit = str(args, 'session');
+  const s = explicit ?? (insideTmux() ? currentSessionName() : DEFAULT_SESSION);
+
+  let removed = 0;
+  for (const w of listWorkers(db)) {
+    if (w.session !== s) continue;
+    killPane(w.pane_id);
+    removed++;
+  }
   db.prepare('DELETE FROM workers WHERE session = ?').run(s);
+
+  // Workers spawned with --here live in the user's own session; tearing that
+  // down would kill the shell they are typing in.
+  const isOwnSession = insideTmux() && currentSessionName() === s;
+  if (isOwnSession) {
+    console.log(`removed ${removed} worker pane(s) from "${s}" (session left running — it is yours)`);
+    return;
+  }
   try {
     tmux(['kill-session', '-t', `=${s}`]);
   } catch {
     /* already gone */
   }
-  console.log(`session "${s}" torn down`);
+  console.log(`session "${s}" torn down (${removed} worker pane(s))`);
 }
 
 function cmdAttach(args: Args): void {
   const s = session(args);
   if (!hasSession(s)) fail(`session "${s}" is not running (orchestmux up)`);
+  if (insideTmux()) {
+    // `tmux attach` refuses to nest; moving the current client is the in-tmux
+    // equivalent. Prefix-L switches back.
+    if (currentSessionName() === s) {
+      console.log(`already in session "${s}"`);
+      return;
+    }
+    switchClient(s);
+    console.log(`switched to session "${s}" (prefix + L to switch back)`);
+    return;
+  }
   spawnSync('tmux', ['attach', '-t', s], { stdio: 'inherit' });
 }
 
@@ -455,6 +509,7 @@ const HELP = `orchestmux — multi-agent orchestration for coding CLIs in tmux
 
   up                                        create the tmux session
   spawn --name <w> --agent <a> [--yolo]     add a worker pane running an agent
+        [--here]                            ...split THIS window instead (watch live, no attach)
   task add "<spec>"                         create a task, prints its id
   task list [--json]                        list tasks
   dispatch --task <id> --to <w>             inject the task + protocol into a worker

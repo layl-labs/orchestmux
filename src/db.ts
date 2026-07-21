@@ -14,6 +14,8 @@ export interface Worker {
   agent: string;
   pane_id: string;
   session: string;
+  /** tmux window the pane lives in, e.g. "orchestmux:workers" or "dev:@3". */
+  window: string;
   cwd: string;
   created_at: string;
 }
@@ -89,7 +91,21 @@ export function openDb(): DatabaseSync {
     CREATE INDEX IF NOT EXISTS idx_messages_inbox ON messages (to_worker, read_at, type);
     CREATE INDEX IF NOT EXISTS idx_messages_reply ON messages (reply_to);
   `);
+  migrate(db);
   return db;
+}
+
+/** Additive-only migrations; each is safe to attempt on an already-migrated db. */
+function migrate(db: DatabaseSync): void {
+  const columns = new Set(
+    (db.prepare('PRAGMA table_info(workers)').all() as unknown as { name: string }[]).map(
+      (c) => c.name,
+    ),
+  );
+  if (!columns.has('window')) {
+    db.exec(`ALTER TABLE workers ADD COLUMN window TEXT NOT NULL DEFAULT ''`);
+    db.exec(`UPDATE workers SET window = session || ':workers' WHERE window = ''`);
+  }
 }
 
 export function insertMessage(

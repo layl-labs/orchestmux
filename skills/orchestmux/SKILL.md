@@ -56,6 +56,10 @@ orchestmux dispatch --task $TASK --to w1
 orchestmux wait --timeout 900                   # blocks; exit 2 == timeout
 ```
 
+If the user wants to watch the workers and you are running inside tmux, spawn
+with `--here` so panes split the user's current window — `attach` cannot nest
+into a second tmux session, so a dedicated session would be invisible to them.
+
 Rules that matter:
 
 - **Write the spec as if the worker knows nothing.** It gets the spec text and
@@ -112,7 +116,7 @@ the job is finished and the user has the results.
 | Command | Purpose |
 | --- | --- |
 | `up` | Create the tmux session |
-| `spawn --name <w> --agent <a> [--yolo]` | Add a worker pane |
+| `spawn --name <w> --agent <a> [--yolo] [--here]` | Add a worker pane (`--here` splits the current window) |
 | `task add "<spec>"` | Create a task, prints its id |
 | `task list [--json]` | List tasks and their status |
 | `dispatch --task <id> --to <w>` | Send task + protocol to a worker |

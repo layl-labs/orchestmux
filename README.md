@@ -66,6 +66,33 @@ orchestmux dispatch --task $(orchestmux task add "Write tests for src/parser") -
 for i in 1 2; do orchestmux wait --timeout 1800; done
 ```
 
+## Watching workers
+
+By default workers live in a dedicated `orchestmux` tmux session, and you watch
+them with `orchestmux attach`.
+
+If you are **already inside tmux**, attach cannot nest into a second session.
+Use `--here` instead: workers become split panes in your current window, so
+they are visible the moment they spawn and you never switch sessions.
+
+```bash
+orchestmux spawn --name w1 --agent codex --yolo --here
+orchestmux spawn --name w2 --agent kimi  --yolo --here
+```
+
+```
+┌─ your window ───────────────────────────────────┐
+│ $ orchestmux wait          │ w1  codex          │
+│ (coordinator, your shell)  │ working…           │
+│                            ├────────────────────┤
+│                            │ w2  kimi           │
+└────────────────────────────┴────────────────────┘
+```
+
+Panes are real: scroll back, type into them, take an agent over mid-task.
+`orchestmux down` removes worker panes but never kills a session you are
+sitting in.
+
 ## How dispatch works
 
 `dispatch` pastes the task spec into the worker's pane followed by a short
