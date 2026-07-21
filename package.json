@@ -13,6 +13,15 @@
     "cli"
   ],
   "license": "MIT",
+  "author": "Youngha Kim",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/younghotkim/orchestmux.git"
+  },
+  "homepage": "https://github.com/younghotkim/orchestmux#readme",
+  "bugs": {
+    "url": "https://github.com/younghotkim/orchestmux/issues"
+  },
   "type": "module",
   "bin": {
     "orchestmux": "dist/cli.js"
@@ -20,7 +29,8 @@
   "files": [
     "dist",
     "README.md",
-    "skills"
+    "skills",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=22.5.0"
