@@ -146,6 +146,23 @@ but note that a bare shell **executes** the pasted preamble line by line — do
 not `dispatch` to it and expect agent-like behaviour. Call `done` yourself
 instead.
 
+## Use it from Claude Code
+
+`orchestmux` ships a skill so an agent can act as the coordinator for you.
+Install it once:
+
+```bash
+ln -s "$(npm root -g)/orchestmux/skills/orchestmux" ~/.claude/skills/orchestmux
+```
+
+Then just say what you want:
+
+> orchestmux로 codex랑 kimi 병렬로 돌려서 packages/api 감사해줘
+
+The agent creates the tasks, dispatches them, waits on real completions, answers
+any blocking `ask`, and reports back. You can `orchestmux attach` at any time to
+watch the panes or take one over.
+
 ## State
 
 Everything lives in `~/.orchestmux/state.db` (override with `ORCHESTMUX_HOME`):
