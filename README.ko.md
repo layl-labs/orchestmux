@@ -7,15 +7,9 @@
 Claude Code, Codex, Kimi, OpenCode, Gemini를 tmux pane에 워커로 띄우고, 작업을
 배정하고, 실제로 끝날 때까지 기다립니다. GUI도 데몬도 없이 터미널 하나로 끝납니다.
 
-```
-┌─ orchestmux ─────────────────────────────────────────┐
-│ 코디네이터 (사람 또는 에이전트)                       │
-├──────────────────┬───────────────────┬───────────────┤
-│ w1  codex        │ w2  kimi          │ w3  opencode  │
-│ [TASK t_a1b2]    │ [TASK t_c3d4]     │ 대기 중       │
-│ 작업 중…         │ 질문 대기 중      │               │
-└──────────────────┴───────────────────┴───────────────┘
-```
+![orchestmux demo](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo.gif)
+
+*codex와 opencode에 같은 작업을 배정하고, 두 보고를 수거하기까지.*
 
 ---
 

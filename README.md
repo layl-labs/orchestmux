@@ -8,15 +8,9 @@ Spawn Claude Code, Codex, Kimi, OpenCode, or Gemini as workers in tmux panes,
 dispatch tasks to them, and block until they report back — all from one
 terminal, with no GUI and no daemon.
 
-```
-┌─ orchestmux ─────────────────────────────────────────┐
-│ coordinator (you, or an agent)                       │
-├──────────────────┬───────────────────┬───────────────┤
-│ w1  codex        │ w2  kimi          │ w3  opencode  │
-│ [TASK t_a1b2]    │ [TASK t_c3d4]     │ idle          │
-│ working…         │ asking a question │               │
-└──────────────────┴───────────────────┴───────────────┘
-```
+![orchestmux demo](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo.gif)
+
+*Dispatching one task to codex and opencode, then collecting both reports.*
 
 ## Why
 
