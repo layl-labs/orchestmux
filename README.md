@@ -1,0 +1,164 @@
+# orchestmux
+
+Multi-agent orchestration for coding CLIs, in tmux.
+
+Spawn Claude Code, Codex, Kimi, OpenCode, or Gemini as workers in tmux panes,
+dispatch tasks to them, and block until they report back — all from one
+terminal, with no GUI and no daemon.
+
+```
+┌─ orchestmux ─────────────────────────────────────────┐
+│ coordinator (you, or an agent)                       │
+├──────────────────┬───────────────────┬───────────────┤
+│ w1  codex        │ w2  kimi          │ w3  opencode  │
+│ [TASK t_a1b2]    │ [TASK t_c3d4]     │ idle          │
+│ working…         │ asking a question │               │
+└──────────────────┴───────────────────┴───────────────┘
+```
+
+## Why
+
+Running several coding agents in parallel is easy; knowing when they are *done*
+is not. `orchestmux` adds the missing piece: every dispatched task carries a
+reporting protocol, so the coordinator can block on real completion instead of
+polling terminal output and guessing.
+
+- **Real panes.** Workers are tmux panes. Attach, scroll back, type into them,
+  take over an agent mid-task. Nothing is hidden behind a viewer.
+- **Any CLI agent.** If it runs in a terminal, it can be a worker.
+- **No runtime dependencies.** State lives in SQLite via Node's built-in
+  `node:sqlite`. No native builds, no background service.
+
+## Install
+
+Requires Node >= 22.5 and tmux.
+
+```bash
+npm install -g orchestmux
+```
+
+From source:
+
+```bash
+git clone https://github.com/<you>/orchestmux && cd orchestmux
+npm install && npm run build && npm link
+```
+
+## Quick start
+
+```bash
+orchestmux up                                        # create the tmux session
+orchestmux spawn --name w1 --agent codex --yolo      # add a worker pane
+orchestmux attach                                    # (optional) watch it live
+
+TASK=$(orchestmux task add "Audit packages/api for unhandled promise rejections")
+orchestmux dispatch --task $TASK --to w1
+
+orchestmux wait --timeout 900                        # blocks until w1 reports
+```
+
+Parallel workers, then collect results one completion at a time:
+
+```bash
+orchestmux spawn --name w2 --agent kimi --yolo
+orchestmux dispatch --task $(orchestmux task add "Write tests for src/parser") --to w2
+
+for i in 1 2; do orchestmux wait --timeout 1800; done
+```
+
+## How dispatch works
+
+`dispatch` pastes the task spec into the worker's pane followed by a short
+protocol block:
+
+```
+[ORCHESTMUX TASK t_a1b2c3d4]
+
+<your task spec>
+
+--- reporting protocol (required) ---
+A coordinator is blocked waiting on you. When the work is finished, run exactly:
+  orchestmux done --task t_a1b2c3d4 --body "<3-5 sentence summary>"
+
+If you are blocked and need a decision before you can continue, run:
+  orchestmux ask --task t_a1b2c3d4 --question "<your question>"
+```
+
+The worker's pane is spawned with `ORCHESTMUX_WORKER` set, so `done` and `ask`
+know who is calling without any extra flags. That callback is the whole
+mechanism — completion is a recorded fact, not an inference from scrollback.
+
+`ask` blocks the worker until the coordinator answers:
+
+```bash
+# coordinator
+orchestmux wait                       # → [ask] w1 … id=m_9f8e7d6c
+orchestmux reply --id m_9f8e7d6c --body "Use the v2 endpoint."
+```
+
+## Commands
+
+| Command | Description |
+| --- | --- |
+| `up` | Create the tmux session |
+| `spawn --name <w> --agent <a> [--yolo]` | Add a worker pane running an agent |
+| `task add "<spec>"` | Create a task, prints its id |
+| `task list [--json]` | List tasks |
+| `dispatch --task <id> --to <w>` | Inject task + protocol into a worker |
+| `wait [--types done,ask] [--timeout 900]` | Block until a worker reports |
+| `reply --id <msg> --body "<answer>"` | Answer a worker's `ask` |
+| `send --to <w> --body "<text>"` | Message a worker |
+| `ps [--json]` | Workers, tasks, unread count |
+| `attach` | Attach to the tmux session |
+| `kill --name <w>` / `down` | Remove one worker / tear down the session |
+
+Called by workers inside a spawned pane:
+
+| Command | Description |
+| --- | --- |
+| `done --task <id> --body "<summary>" [--failed]` | Report completion |
+| `ask --task <id> --question "<q>"` | Blocking question to the coordinator |
+
+`wait` exits `2` on timeout — a checkpoint, not a failure. Long tasks routinely
+outlive one window, so loop on it rather than treating it as an error:
+
+```bash
+until orchestmux wait --timeout 600; do echo "still working…"; done
+```
+
+## Agents
+
+`claude`, `codex`, `kimi`, `opencode`, `gemini`, and `shell`.
+
+`--yolo` adds each agent's "run without approval prompts" flag
+(`--dangerously-skip-permissions` for Claude Code,
+`--dangerously-bypass-approvals-and-sandbox` for Codex, `--yolo` for Gemini).
+It is **off by default** — an agent that stops for approval will stall the
+coordinator, but granting unattended write access is your call to make
+explicitly. Extra arguments after the flags are passed to the agent:
+
+```bash
+orchestmux spawn --name w1 --agent codex --yolo -- --model gpt-5.5
+```
+
+`shell` spawns a plain shell. It is useful for exercising the protocol by hand,
+but note that a bare shell **executes** the pasted preamble line by line — do
+not `dispatch` to it and expect agent-like behaviour. Call `done` yourself
+instead.
+
+## State
+
+Everything lives in `~/.orchestmux/state.db` (override with `ORCHESTMUX_HOME`):
+workers, tasks, and the message log. Sessions default to the tmux session
+`orchestmux` (override with `--session` or `ORCHESTMUX_SESSION`), so several
+independent swarms can run side by side.
+
+## Scope
+
+This is the core loop — spawn, dispatch, wait, report, ask. Task dependency
+graphs, decision gates, and coordinator auto-loops are deliberately left out
+until the core proves itself in daily use.
+
+## License
+
+MIT
