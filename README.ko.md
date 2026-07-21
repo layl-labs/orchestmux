@@ -332,17 +332,6 @@ ln -s "$(npm root -g)/orchestmux/skills/orchestmux" ~/.claude/skills/orchestmux
 
 ---
 
-## 크레딧
-
-여기에 쓰인 조율 모델 — 작업 단위, 보고 preamble을 주입하는 dispatch, 워커 완료에
-대한 블로킹 대기 — 은 같은 문제를 자체 데스크톱 앱 안에서 해결한
-[Orca](https://github.com/stablyai/orca)(MIT)에서 배웠습니다.
-
-orchestmux는 **Orca와 코드를 공유하지 않습니다.** tmux pane과 로컬 SQLite 저장소를
-중심으로 새로 만든 독립 구현입니다.
-
----
-
 ## 라이선스
 
 MIT

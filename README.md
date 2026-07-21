@@ -268,14 +268,6 @@ This is the core loop — spawn, dispatch, wait, report, ask. Task dependency
 graphs, decision gates, and coordinator auto-loops are deliberately left out
 until the core proves itself in daily use.
 
-## Credits
-
-The coordination model here — tasks, dispatch with an injected reporting
-preamble, blocking waits on worker completion — was learned from
-[Orca](https://github.com/stablyai/orca) (MIT), which solves the same problem
-inside its own desktop app. orchestmux shares no code with it: this is an
-independent implementation built around tmux panes and a local SQLite store.
-
 ## License
 
 MIT
