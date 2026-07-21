@@ -1,5 +1,7 @@
 # orchestmux
 
+[English](README.md) · [한국어](README.ko.md)
+
 Multi-agent orchestration for coding CLIs, in tmux.
 
 Spawn Claude Code, Codex, Kimi, OpenCode, or Gemini as workers in tmux panes,
@@ -183,38 +185,42 @@ instead.
 
 ## Use it from Claude Code
 
-`orchestmux` ships a skill so an agent can act as the coordinator for you, and
-a plugin that installs it.
+`orchestmux` ships as a Claude Code plugin: a skill that teaches an agent to
+act as the coordinator, plus slash commands.
 
 ```bash
-npm i -g orchestmux            # the CLI (you and the workers both call it)
+npm i -g orchestmux
 ```
 ```
 /plugin marketplace add younghotkim/orchestmux
 /plugin install orchestmux@orchestmux
 ```
 
-The plugin adds the skill plus `/orchestmux:doctor`, `/orchestmux:ps`, and
-`/orchestmux:down`.
-
 Installing the plugin does **not** install the CLI — Claude Code plugins ship
 skills and commands, not binaries. On a fresh machine run `/orchestmux:doctor`
-first: it checks tmux, Node, the agent CLIs, and offers to `npm i -g orchestmux`
-for you, so onboarding never leaves the editor.
+first: it checks tmux, Node, and the agent CLIs, and offers to
+`npm i -g orchestmux` for you, so onboarding never leaves the editor.
 
-Prefer no plugin? Link the skill by hand instead:
+| Command | Purpose |
+| --- | --- |
+| `/orchestmux:doctor` | Check prerequisites; offer to install the CLI |
+| `/orchestmux:run <what to do>` | Spawn workers, dispatch, wait, report |
+| `/orchestmux:ps` | Workers, tasks, unread reports |
+| `/orchestmux:down` | Tear down workers |
+
+```
+/orchestmux:run audit packages/api for unhandled promise rejections
+/orchestmux:run split the parser tests across codex and kimi
+```
+
+The skill also fires on plain language — "run codex and kimi in parallel on
+X" — so the commands are for discoverability, not a requirement.
+
+Prefer no plugin? Link the skill by hand:
 
 ```bash
 ln -s "$(npm root -g)/orchestmux/skills/orchestmux" ~/.claude/skills/orchestmux
 ```
-
-Then just say what you want:
-
-> orchestmux로 codex랑 kimi 병렬로 돌려서 packages/api 감사해줘
-
-The agent creates the tasks, dispatches them, waits on real completions, answers
-any blocking `ask`, and reports back. You can `orchestmux attach` at any time to
-watch the panes or take one over.
 
 ## State
 
@@ -228,6 +234,14 @@ independent swarms can run side by side.
 This is the core loop — spawn, dispatch, wait, report, ask. Task dependency
 graphs, decision gates, and coordinator auto-loops are deliberately left out
 until the core proves itself in daily use.
+
+## Credits
+
+The coordination model here — tasks, dispatch with an injected reporting
+preamble, blocking waits on worker completion — was learned from
+[Orca](https://github.com/stablyai/orca) (MIT), which solves the same problem
+inside its own desktop app. orchestmux shares no code with it: this is an
+independent implementation built around tmux panes and a local SQLite store.
 
 ## License
 

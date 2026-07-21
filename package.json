@@ -30,7 +30,8 @@
     "dist",
     "README.md",
     "skills",
-    "LICENSE"
+    "LICENSE",
+    "README.ko.md"
   ],
   "engines": {
     "node": ">=22.5.0"
