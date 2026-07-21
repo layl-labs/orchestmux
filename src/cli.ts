@@ -171,6 +171,25 @@ function settleSignature(raw: string): string {
     .trim();
 }
 
+/**
+ * Submits whatever is sitting in the pane's composer.
+ *
+ * A bracketed paste is not instantaneous: agent TUIs are still consuming the
+ * paste-end sequence for a while after `paste-buffer` returns, and an Enter
+ * that lands during that window is swallowed — the prompt then sits unsent in
+ * the composer forever. So: wait for the paste to settle, press Enter, and
+ * confirm the pane actually moved on before giving up.
+ */
+function submit(paneId: string): void {
+  sleep(1200);
+  const before = settleSignature(capturePane(paneId, 30));
+  sendEnter(paneId);
+  sleep(1500);
+  if (settleSignature(capturePane(paneId, 30)) === before) {
+    sendEnter(paneId);
+  }
+}
+
 /** Best-effort TUI readiness: wait until the pane output stops changing. */
 function waitReady(paneId: string, timeoutMs: number): boolean {
   const deadline = Date.now() + timeoutMs;
@@ -236,8 +255,7 @@ function cmdDispatch(db: DatabaseSync, args: Args): void {
   }
 
   sendPrompt(worker.pane_id, dispatchPrompt({ taskId, spec: task.spec, cli: cliInvocation() }));
-  sleep(300); // let the TUI ingest the paste before submitting
-  sendEnter(worker.pane_id);
+  submit(worker.pane_id);
 
   db.prepare(`UPDATE tasks SET status = 'dispatched', assignee = ?, updated_at = ? WHERE id = ?`).run(
     to,
