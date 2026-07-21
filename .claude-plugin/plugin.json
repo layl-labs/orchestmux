@@ -1,0 +1,20 @@
+{
+  "name": "orchestmux",
+  "version": "0.1.0",
+  "description": "Run coding-agent CLIs (Claude Code, Codex, Kimi, OpenCode, Gemini) in parallel as tmux panes and coordinate them: dispatch tasks, block on real completion, answer blocking questions.",
+  "author": {
+    "name": "Youngha Kim"
+  },
+  "repository": "https://github.com/younghotkim/orchestmux",
+  "license": "MIT",
+  "keywords": [
+    "multi-agent",
+    "orchestration",
+    "tmux",
+    "parallel",
+    "codex",
+    "kimi",
+    "opencode",
+    "gemini"
+  ]
+}

@@ -29,9 +29,17 @@ polling terminal output and guessing.
 - **No runtime dependencies.** State lives in SQLite via Node's built-in
   `node:sqlite`. No native builds, no background service.
 
-## Install
+## Requirements
 
-Requires Node >= 22.5 and tmux.
+- **tmux** — workers are tmux panes; there is no fallback. macOS, Linux, or WSL.
+  Native Windows is not supported.
+- **Node >= 22.5** — the CLI uses the built-in `node:sqlite` module.
+- **At least one agent CLI**, installed and logged in. orchestmux provides no
+  model access of its own: every worker runs on that machine's own
+  subscriptions, so each person uses their own Claude/ChatGPT/Kimi plan and
+  orchestmux itself costs nothing.
+
+## Install
 
 ```bash
 npm install -g orchestmux
@@ -175,8 +183,22 @@ instead.
 
 ## Use it from Claude Code
 
-`orchestmux` ships a skill so an agent can act as the coordinator for you.
-Install it once:
+`orchestmux` ships a skill so an agent can act as the coordinator for you, and
+a plugin that installs it.
+
+```bash
+npm i -g orchestmux            # the CLI (you and the workers both call it)
+```
+```
+/plugin marketplace add younghotkim/orchestmux
+/plugin install orchestmux@orchestmux
+```
+
+The plugin adds the skill plus `/orchestmux:doctor` (check prerequisites),
+`/orchestmux:ps`, and `/orchestmux:down`. Run `/orchestmux:doctor` first — it
+reports exactly what is missing on a new machine.
+
+Prefer no plugin? Link the skill by hand instead:
 
 ```bash
 ln -s "$(npm root -g)/orchestmux/skills/orchestmux" ~/.claude/skills/orchestmux

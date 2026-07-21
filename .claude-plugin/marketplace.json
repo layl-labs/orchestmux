@@ -1,0 +1,30 @@
+{
+  "name": "orchestmux",
+  "owner": {
+    "name": "Youngha Kim",
+    "email": ""
+  },
+  "metadata": {
+    "description": "Multi-agent orchestration for coding CLIs in tmux — spawn, dispatch, and wait on Claude Code, Codex, Kimi, OpenCode, and Gemini workers from one terminal.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "orchestmux",
+      "source": "./",
+      "description": "Coordinate several coding agents at once. Workers run as real tmux panes you can watch and take over; every dispatched task carries a reporting protocol so the coordinator blocks on actual completion instead of guessing from terminal output. Requires the `orchestmux` CLI (npm i -g orchestmux) and tmux.",
+      "category": "productivity",
+      "tags": [
+        "multi-agent",
+        "orchestration",
+        "tmux",
+        "parallel",
+        "codex",
+        "kimi",
+        "opencode",
+        "gemini"
+      ]
+    }
+  ],
+  "version": "0.1.0"
+}
