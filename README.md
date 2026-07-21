@@ -108,6 +108,19 @@ Panes are real: scroll back, type into them, take an agent over mid-task.
 `orchestmux down` removes worker panes but never kills a session you are
 sitting in.
 
+Panes deliberately stay open after a worker reports. The scrollback is the only
+record of *how* it reached its conclusion, and reports can be wrong — closing
+the pane on `done` would destroy the evidence you need to check one. Clear the
+finished ones when you have read the results:
+
+```bash
+orchestmux sweep --dry-run   # what would go
+orchestmux sweep             # workers still working are kept
+```
+
+A worker whose pane died before reporting also has its task marked `failed`,
+so nothing sits in `dispatched` pretending to still be in flight.
+
 ## How dispatch works
 
 `dispatch` relaunches the worker's pane with the agent, handing it the task
@@ -162,6 +175,7 @@ orchestmux reply --id m_9f8e7d6c --body "Use the v2 endpoint."
 | `ps [--json]` | Workers, tasks, unread count |
 | `attach` | Attach to the tmux session |
 | `watch` | Open a terminal already attached to the session |
+| `sweep [--dry-run]` | Remove workers with nothing left to do |
 | `kill --name <w>` / `down` | Remove one worker / tear down the session |
 
 Called by workers inside a spawned pane:

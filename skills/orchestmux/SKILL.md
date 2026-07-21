@@ -126,12 +126,15 @@ result.
 ## Cleanup
 
 ```bash
-orchestmux kill --name w1     # one worker
+orchestmux sweep --dry-run    # preview: idle and dead workers
+orchestmux sweep              # remove them; workers still working are kept
+orchestmux kill --name w1     # one specific worker
 orchestmux down               # whole session
 ```
 
-Leave workers running if the user may want to keep using them; tear down when
-the job is finished and the user has the results.
+Do not sweep or kill immediately after reporting. The pane scrollback is the
+only record of how a worker reached its conclusion, and you may need it to
+check a claim. Sweep once the user has the results, or when they ask.
 
 ## Command reference
 

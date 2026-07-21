@@ -443,6 +443,59 @@ function cmdKill(db: DatabaseSync, args: Args): void {
   console.log(`killed ${name}`);
 }
 
+/**
+ * Removes workers that have nothing left to do, keeping the ones still working.
+ *
+ * Panes are not closed the moment a worker reports: the scrollback is the only
+ * record of *how* it reached its conclusion, and reports can be wrong. Sweeping
+ * is therefore a deliberate act you run once you have read the results.
+ */
+function cmdSweep(db: DatabaseSync, args: Args): void {
+  const dryRun = bool(args, 'dry-run', false);
+  const swept: string[] = [];
+  const orphaned: string[] = [];
+  const kept: { name: string; task: string }[] = [];
+
+  for (const w of listWorkers(db)) {
+    const busy = db
+      .prepare(`SELECT id FROM tasks WHERE assignee = ? AND status = 'dispatched' LIMIT 1`)
+      .get(w.name) as { id: string } | undefined;
+    const alive = paneAlive(w.pane_id);
+
+    if (busy && alive) {
+      kept.push({ name: w.name, task: busy.id });
+      continue;
+    }
+    if (dryRun) {
+      swept.push(w.name);
+      if (busy) orphaned.push(busy.id);
+      continue;
+    }
+    // A dead pane means its dispatch can never report; leaving the task
+    // `dispatched` would make it look like work still in flight.
+    if (busy) {
+      db.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?').run(
+        'failed',
+        now(),
+        busy.id,
+      );
+      orphaned.push(busy.id);
+    }
+    killPane(w.pane_id);
+    db.prepare('DELETE FROM workers WHERE name = ?').run(w.name);
+    swept.push(w.name);
+  }
+
+  if (bool(args, 'json', false)) {
+    console.log(JSON.stringify({ swept, kept, orphaned, dryRun }, null, 2));
+    return;
+  }
+  const verb = dryRun ? 'would remove' : 'removed';
+  console.log(swept.length ? `${verb} ${swept.length}: ${swept.join(', ')}` : 'nothing to sweep');
+  for (const o of orphaned) console.log(`  ${o} marked failed — its worker died before reporting`);
+  for (const k of kept) console.log(`  kept ${k.name} — still working on ${k.task}`);
+}
+
 function cmdDown(db: DatabaseSync, args: Args): void {
   const explicit = str(args, 'session');
   const s = explicit ?? (insideTmux() ? currentSessionName() : DEFAULT_SESSION);
@@ -532,6 +585,7 @@ const HELP = `orchestmux — multi-agent orchestration for coding CLIs in tmux
   send --to <w> --body "<text>"             message a worker
   ps [--json]                               workers, tasks, unread count
   attach | watch                            attach to the session | open a terminal attached to it
+  sweep [--dry-run]                         remove workers with nothing left to do
   kill --name <w> | down                    remove one worker | tear down the session
 
   called by workers (inside a spawned pane):
@@ -580,6 +634,8 @@ function main(): void {
       return cmdSend(db, args);
     case 'ps':
       return cmdPs(db, args);
+    case 'sweep':
+      return cmdSweep(db, args);
     case 'kill':
       return cmdKill(db, args);
     case 'down':
