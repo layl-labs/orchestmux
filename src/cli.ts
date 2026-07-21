@@ -33,6 +33,7 @@ import {
   openTerminal,
 } from './tmux.js';
 import { AGENTS, agentNames, buildCommand, isInstalled } from './agents.js';
+import { isCodexTrusted, trustCodexDirectory } from './trust.js';
 import { cliInvocation, dispatchPrompt } from './preamble.js';
 
 const DEFAULT_SESSION = process.env.ORCHESTMUX_SESSION ?? 'orchestmux';
@@ -116,6 +117,21 @@ function whoami(args: Args): string {
   return from;
 }
 
+/**
+ * Environment every worker pane needs. ORCHESTMUX_HOME has to travel with it:
+ * a worker writes its report through the same CLI, and if it resolved a
+ * different state directory than the coordinator, `done` would land in a
+ * database nobody is reading.
+ */
+function workerEnv(worker: string, session: string): Record<string, string> {
+  const env: Record<string, string> = {
+    ORCHESTMUX_WORKER: worker,
+    ORCHESTMUX_SESSION: session,
+  };
+  if (process.env.ORCHESTMUX_HOME) env.ORCHESTMUX_HOME = process.env.ORCHESTMUX_HOME;
+  return env;
+}
+
 // ---------------------------------------------------------------- commands
 
 function cmdUp(args: Args): void {
@@ -158,6 +174,14 @@ function cmdSpawn(db: DatabaseSync, args: Args): void {
   if (getWorker(db, name)) fail(`worker "${name}" already exists (orchestmux kill --name ${name})`);
   if (!isInstalled(AGENTS[agent]!.cmd)) fail(`agent binary "${AGENTS[agent]!.cmd}" not found on PATH`);
 
+  // Do this before the pane exists: an untrusted directory parks codex on a
+  // prompt --yolo cannot answer, and the worker would never read its task.
+  // Tied to --yolo because it writes to the user's codex config.
+  if (AGENTS[agent]!.preflightTrust === 'codex' && autonomous && !isCodexTrusted(cwd)) {
+    const t = trustCodexDirectory(cwd);
+    if (t.changed) console.log(`trusted ${t.path} in ~/.codex/config.toml (codex would block otherwise)`);
+  }
+
   const s = inPlace ? (enclosingWindow() ?? currentWindow()).split(':')[0]! : session(args);
   if (!inPlace && !hasSession(s)) newSession(s, cwd);
   const window = inPlace ? (enclosingWindow() ?? currentWindow()) : `${s}:workers`;
@@ -169,7 +193,7 @@ function cmdSpawn(db: DatabaseSync, args: Args): void {
   const paneId = addPane({
     window,
     cwd,
-    env: { ORCHESTMUX_WORKER: name, ORCHESTMUX_SESSION: s },
+    env: workerEnv(name, s),
     command,
     reuseFirst: !inPlace && !occupied,
   });
@@ -269,7 +293,7 @@ function cmdDispatch(db: DatabaseSync, args: Args): void {
   respawnPane({
     paneId: worker.pane_id,
     cwd: worker.cwd,
-    env: { ORCHESTMUX_WORKER: to, ORCHESTMUX_SESSION: worker.session },
+    env: workerEnv(to, worker.session),
     command,
   });
 

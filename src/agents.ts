@@ -18,6 +18,8 @@ export interface AgentSpec {
   prompt: PromptMode;
   /** True when --prompt runs the task once and exits instead of staying up. */
   headless?: boolean;
+  /** Agent blocks on a per-directory trust prompt that --yolo does not cover. */
+  preflightTrust?: 'codex';
 }
 
 export const AGENTS: Record<string, AgentSpec> = {
@@ -30,6 +32,7 @@ export const AGENTS: Record<string, AgentSpec> = {
     cmd: 'codex',
     autonomousArgs: ['--dangerously-bypass-approvals-and-sandbox'],
     prompt: { kind: 'positional' },
+    preflightTrust: 'codex',
   },
   kimi: { cmd: 'kimi', autonomousArgs: [], prompt: { kind: 'flag', flag: '-p' }, headless: true },
   opencode: { cmd: 'opencode', autonomousArgs: [], prompt: { kind: 'flag', flag: '--prompt' } },
