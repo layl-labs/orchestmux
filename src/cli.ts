@@ -1,5 +1,6 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   openDb,
@@ -565,6 +566,18 @@ function cmdWatch(args: Args): void {
   console.log(`could not open a terminal automatically — run this yourself:\n  tmux attach -t ${s}`);
 }
 
+/** Read from package.json so a release never has to remember to update it. */
+function packageVersion(): string {
+  try {
+    const pkg = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as { version?: string };
+    return pkg.version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 function oneLine(s: string, max: number): string {
   const flat = s.replace(/\s+/g, ' ').trim();
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
@@ -605,7 +618,7 @@ function main(): void {
     return;
   }
   if (cmd === 'version') {
-    console.log('0.1.0');
+    console.log(packageVersion());
     return;
   }
   if (!tmuxAvailable()) fail('tmux not found on PATH');
