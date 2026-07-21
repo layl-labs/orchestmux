@@ -194,9 +194,13 @@ npm i -g orchestmux            # the CLI (you and the workers both call it)
 /plugin install orchestmux@orchestmux
 ```
 
-The plugin adds the skill plus `/orchestmux:doctor` (check prerequisites),
-`/orchestmux:ps`, and `/orchestmux:down`. Run `/orchestmux:doctor` first — it
-reports exactly what is missing on a new machine.
+The plugin adds the skill plus `/orchestmux:doctor`, `/orchestmux:ps`, and
+`/orchestmux:down`.
+
+Installing the plugin does **not** install the CLI — Claude Code plugins ship
+skills and commands, not binaries. On a fresh machine run `/orchestmux:doctor`
+first: it checks tmux, Node, the agent CLIs, and offers to `npm i -g orchestmux`
+for you, so onboarding never leaves the editor.
 
 Prefer no plugin? Link the skill by hand instead:
 

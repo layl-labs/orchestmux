@@ -1,38 +1,61 @@
 ---
-description: Check that orchestmux and its prerequisites are ready on this machine
+description: Check orchestmux prerequisites and offer to install what is missing
 allowed-tools: Bash
 ---
 
 # orchestmux doctor
 
-Verify this machine can run orchestmux, and report exactly what is missing.
+Verify this machine can run orchestmux, report what is missing, and offer to
+install the CLI if it is absent.
 
-## Tasks
+Installing the plugin does **not** install the CLI — plugins ship skills and
+commands, not binaries — so a fresh machine will usually be missing it.
 
-Run the checks below, then summarise for the user in their language. Do not fix
-anything without asking — just report.
+## 1. Check
 
 ```bash
-echo "── tmux ──";      command -v tmux >/dev/null && tmux -V || echo "MISSING: tmux (sudo apt install tmux)"
-echo "── node ──";      node --version 2>/dev/null || echo "MISSING: node"
-echo "── orchestmux ──"; command -v orchestmux >/dev/null && orchestmux version || echo "MISSING: orchestmux (npm i -g orchestmux)"
+echo "── tmux ──";       command -v tmux >/dev/null && tmux -V || echo "MISSING: tmux"
+echo "── node ──";       node --version 2>/dev/null || echo "MISSING: node"
+echo "── orchestmux ──"; command -v orchestmux >/dev/null && orchestmux version || echo "MISSING: orchestmux"
 echo "── agents ──"
 for b in claude codex kimi opencode gemini; do
   p=$(command -v $b 2>/dev/null) && echo "  ok   $b -> $p" || echo "  none $b"
 done
-echo "── state ──";     orchestmux ps 2>/dev/null | head -20 || true
+echo "── state ──";      orchestmux ps 2>/dev/null | head -20 || true
 ```
 
-## Interpreting the result
+## 2. Offer to install the CLI
 
-- **tmux missing** — nothing works without it. orchestmux runs workers as tmux
-  panes; there is no fallback. On WSL/Ubuntu: `sudo apt install tmux`.
+If `orchestmux` is missing, ask the user whether to install it, then run:
+
+```bash
+npm i -g orchestmux
+```
+
+Ask first — this is a global install. If it fails with `EACCES`, npm's global
+prefix is a system directory; report that and offer `sudo npm i -g orchestmux`
+as a second step rather than running sudo unprompted. Do not silently rewrite
+the user's npm prefix.
+
+Confirm afterwards:
+
+```bash
+command -v orchestmux && orchestmux version
+```
+
+## 3. Report
+
+Say plainly what is ready and what still blocks the user.
+
+- **tmux missing** — nothing works without it; workers are tmux panes and there
+  is no fallback. WSL/Ubuntu: `sudo apt install tmux`. Native Windows is not
+  supported.
 - **node older than 22.5** — the CLI uses the built-in `node:sqlite` module and
-  will not start on older runtimes.
-- **orchestmux missing** — `npm i -g orchestmux`.
-- **no agents found** — orchestmux provides no AI of its own; it drives the
-  agent CLIs already installed and logged in on this machine. At least one of
-  claude / codex / kimi / opencode / gemini must be present, authenticated with
-  that person's own subscription.
+  will not start on older runtimes. Do not attempt to upgrade node for them.
+- **no agents found** — orchestmux provides no model access of its own; it
+  drives the agent CLIs already installed and authenticated on this machine.
+  At least one of claude / codex / kimi / opencode / gemini is required, and
+  each runs on that person's own subscription.
 
-Report which agents are usable, since that determines what can be dispatched.
+Finish by listing which agents are usable, since that is what determines what
+can actually be dispatched.
