@@ -81,14 +81,19 @@ for i in 1 2; do orchestmux wait --timeout 1800; done
 By default workers live in a dedicated `orchestmux` tmux session, and you watch
 them with `orchestmux attach`.
 
-If you are **already inside tmux**, attach cannot nest into a second session.
-Use `--here` instead: workers become split panes in your current window, so
-they are visible the moment they spawn and you never switch sessions.
+If the caller is **already inside tmux**, workers split its current window
+automatically, so they are visible the moment they spawn. orchestmux finds that
+window through the process tree rather than `$TMUX`, which agent harnesses
+routinely strip — pass `--no-here` if you want a dedicated session anyway.
 
 ```bash
-orchestmux spawn --name w1 --agent codex --yolo --here
-orchestmux spawn --name w2 --agent kimi  --yolo --here
+orchestmux spawn --name w1 --agent codex --yolo
+orchestmux spawn --name w2 --agent kimi  --yolo
 ```
+
+Otherwise workers go to the `orchestmux` session, which nobody is attached to
+by default. `orchestmux watch` fixes that: it opens a terminal already attached
+(Windows Terminal under WSL, Terminal.app on macOS).
 
 ```
 ┌─ your window ───────────────────────────────────┐
@@ -141,12 +146,15 @@ orchestmux reply --id m_9f8e7d6c --body "Use the v2 endpoint."
 | `spawn --name <w> --agent <a> [--yolo]` | Add a worker pane running an agent |
 | `task add "<spec>"` | Create a task, prints its id |
 | `task list [--json]` | List tasks |
+| `task update --id <id> --status <s>` | Recover a task stuck in `dispatched` |
+| `task rm --id <id>` | Delete a task |
 | `dispatch --task <id> --to <w>` | Inject task + protocol into a worker |
 | `wait [--types done,ask] [--timeout 900]` | Block until a worker reports |
 | `reply --id <msg> --body "<answer>"` | Answer a worker's `ask` |
 | `send --to <w> --body "<text>"` | Message a worker |
 | `ps [--json]` | Workers, tasks, unread count |
 | `attach` | Attach to the tmux session |
+| `watch` | Open a terminal already attached to the session |
 | `kill --name <w>` / `down` | Remove one worker / tear down the session |
 
 Called by workers inside a spawned pane:
@@ -155,6 +163,10 @@ Called by workers inside a spawned pane:
 | --- | --- |
 | `done --task <id> --body "<summary>" [--failed]` | Report completion |
 | `ask --task <id> --question "<q>"` | Blocking question to the coordinator |
+
+One worker runs one task at a time: dispatching again to a busy worker
+interrupts it and loses its first report, so `dispatch` refuses. Parallelism
+comes from more workers, never from more dispatches.
 
 `wait` exits `2` on timeout — a checkpoint, not a failure. Long tasks routinely
 outlive one window, so loop on it rather than treating it as an error:

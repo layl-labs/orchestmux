@@ -39,7 +39,54 @@ export function newSession(session: string, cwd: string): void {
 
 /** True when this process is itself running inside a tmux pane. */
 export function insideTmux(): boolean {
-  return Boolean(process.env.TMUX);
+  return Boolean(process.env.TMUX) || enclosingWindow() !== null;
+}
+
+/** Every pid from this process up to init. */
+function ancestorPids(): Set<number> {
+  const pids = new Set<number>();
+  let pid = process.pid;
+  for (let i = 0; i < 32 && pid > 1; i++) {
+    pids.add(pid);
+    let ppid = 0;
+    try {
+      ppid = Number(
+        execFileSync('ps', ['-o', 'ppid=', '-p', String(pid)], { encoding: 'utf8' }).trim(),
+      );
+    } catch {
+      break;
+    }
+    if (!Number.isFinite(ppid) || ppid <= 0) break;
+    pid = ppid;
+  }
+  return pids;
+}
+
+/**
+ * The tmux window this process is running under, or null.
+ *
+ * $TMUX is the obvious signal but it is not reliable: agent harnesses spawn
+ * tools with a sanitised environment, so a coordinator running inside tmux
+ * looks like it is outside. Matching a pane's process against our own ancestry
+ * answers the question the env var was supposed to.
+ */
+export function enclosingWindow(): string | null {
+  let listing: string;
+  try {
+    listing = execFileSync(
+      'tmux',
+      ['list-panes', '-a', '-F', '#{pane_pid} #{session_name}:#{window_id}'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+  } catch {
+    return null;
+  }
+  const mine = ancestorPids();
+  for (const line of listing.trim().split('\n')) {
+    const [pid, target] = line.split(' ');
+    if (pid && target && mine.has(Number(pid))) return target;
+  }
+  return null;
 }
 
 /** "session:@windowid" of the window this process is running in. */
@@ -54,6 +101,61 @@ export function currentSessionName(): string {
 /** In-tmux equivalent of `attach`: move the attached client to another session. */
 export function switchClient(session: string): void {
   tmux(['switch-client', '-t', `=${session}`]);
+}
+
+export function attachedClients(session: string): number {
+  try {
+    const out = execFileSync('tmux', ['list-clients', '-t', `=${session}`], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return out.trim() === '' ? 0 : out.trim().split('\n').length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Opens a terminal window attached to `session`, so workers spawned by a
+ * coordinator that is not itself in tmux are still watchable. Returns the
+ * command used, or null when no terminal could be launched.
+ */
+export function openTerminal(session: string): string | null {
+  const attach = `tmux attach -t ${session}`;
+  const isWsl = Boolean(process.env.WSL_DISTRO_NAME);
+
+  const candidates: { cmd: string; args: string[]; label: string }[] = [];
+  if (isWsl) {
+    const distro = process.env.WSL_DISTRO_NAME!;
+    candidates.push({
+      cmd: 'wt.exe',
+      args: ['-w', '0', 'nt', 'wsl.exe', '-d', distro, '--', 'tmux', 'attach', '-t', session],
+      label: 'Windows Terminal',
+    });
+    candidates.push({
+      cmd: 'cmd.exe',
+      args: ['/c', 'start', '', 'wsl.exe', '-d', distro, '--', 'tmux', 'attach', '-t', session],
+      label: 'cmd start',
+    });
+  } else if (process.platform === 'darwin') {
+    candidates.push({
+      cmd: 'osascript',
+      args: ['-e', `tell application "Terminal" to do script "${attach}"`],
+      label: 'Terminal.app',
+    });
+  } else {
+    candidates.push({ cmd: 'x-terminal-emulator', args: ['-e', attach], label: 'x-terminal' });
+  }
+
+  for (const c of candidates) {
+    try {
+      execFileSync(c.cmd, c.args, { stdio: 'ignore', timeout: 10_000 });
+      return c.label;
+    } catch {
+      /* try the next one */
+    }
+  }
+  return null;
 }
 
 /**

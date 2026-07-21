@@ -29,6 +29,9 @@ import {
   currentWindow,
   currentSessionName,
   switchClient,
+  enclosingWindow,
+  attachedClients,
+  openTerminal,
 } from './tmux.js';
 import { AGENTS, agentNames, buildCommand, isInstalled } from './agents.js';
 import { cliInvocation, dispatchPrompt } from './preamble.js';
@@ -135,9 +138,14 @@ function cmdUp(args: Args): void {
  * since a client cannot attach to a second session from within one.
  */
 function here(args: Args): boolean {
-  const requested = bool(args, 'here', false);
-  if (requested && !insideTmux()) fail('--here requires running inside a tmux pane');
-  return requested;
+  const explicit = args.flags['here'];
+  if (explicit === false) return false;
+  // Default to splitting the caller's window whenever we can find one: a
+  // coordinator inside tmux almost always wants its workers visible, and a
+  // detached session nobody is attached to is the worst of both worlds.
+  const window = enclosingWindow();
+  if (explicit === true && !window) fail('--here requires running inside a tmux pane');
+  return window !== null;
 }
 
 function cmdSpawn(db: DatabaseSync, args: Args): void {
@@ -151,9 +159,9 @@ function cmdSpawn(db: DatabaseSync, args: Args): void {
   if (getWorker(db, name)) fail(`worker "${name}" already exists (orchestmux kill --name ${name})`);
   if (!isInstalled(AGENTS[agent]!.cmd)) fail(`agent binary "${AGENTS[agent]!.cmd}" not found on PATH`);
 
-  const s = inPlace ? currentSessionName() : session(args);
+  const s = inPlace ? (enclosingWindow() ?? currentWindow()).split(':')[0]! : session(args);
   if (!inPlace && !hasSession(s)) newSession(s, cwd);
-  const window = inPlace ? currentWindow() : `${s}:workers`;
+  const window = inPlace ? (enclosingWindow() ?? currentWindow()) : `${s}:workers`;
 
   // Never respawn a pane someone is sitting in — only the placeholder shell of
   // a session we created ourselves is fair game.
@@ -175,9 +183,9 @@ function cmdSpawn(db: DatabaseSync, args: Args): void {
   console.log(`spawned ${name} (${agent}) in pane ${paneId}${inPlace ? ' (this window)' : ''}`);
   if (!inPlace) {
     console.log(
-      insideTmux()
-        ? `watch it: orchestmux attach   (or re-spawn with --here to split this window instead)`
-        : `watch it: orchestmux attach`,
+      attachedClients(s) > 0
+        ? `watch it: already attached in another terminal`
+        : `watch it: orchestmux watch   (opens a terminal attached to "${s}")`,
     );
   }
   if (!autonomous && AGENTS[agent]!.autonomousArgs.length > 0) {
@@ -255,6 +263,25 @@ function cmdTask(db: DatabaseSync, args: Args): void {
     console.log(id);
     return;
   }
+  if (sub === 'update') {
+    // Recovery only: a worker that was interrupted or died leaves its task
+    // stuck in `dispatched`, and nothing else can move it.
+    const id = need(args, 'id');
+    const status = need(args, 'status');
+    const allowed = ['pending', 'dispatched', 'done', 'failed'];
+    if (!allowed.includes(status)) fail(`status must be one of: ${allowed.join(', ')}`);
+    if (!getTask(db, id)) fail(`no such task: ${id}`);
+    db.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?').run(status, now(), id);
+    console.log(`${id} -> ${status}`);
+    return;
+  }
+  if (sub === 'rm') {
+    const id = need(args, 'id');
+    if (!getTask(db, id)) fail(`no such task: ${id}`);
+    db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+    console.log(`removed ${id}`);
+    return;
+  }
   if (sub === 'list' || sub === undefined) {
     const tasks = listTasks(db);
     if (bool(args, 'json', false)) {
@@ -267,7 +294,7 @@ function cmdTask(db: DatabaseSync, args: Args): void {
     }
     return;
   }
-  fail(`unknown task subcommand "${sub}" (add | list)`);
+  fail(`unknown task subcommand "${sub}" (add | list | update | rm)`);
 }
 
 function cmdDispatch(db: DatabaseSync, args: Args): void {
@@ -276,6 +303,18 @@ function cmdDispatch(db: DatabaseSync, args: Args): void {
   const task = getTask(db, taskId) ?? fail(`no such task: ${taskId}`);
   const worker = getWorker(db, to) ?? fail(`no such worker: ${to}`);
   if (!paneAlive(worker.pane_id)) fail(`worker "${to}" pane is gone (orchestmux kill --name ${to})`);
+
+  // An agent mid-task will read a second prompt as an interruption, and the
+  // first task's report is then lost. Parallelism comes from more workers.
+  const busy = db
+    .prepare(`SELECT id FROM tasks WHERE assignee = ? AND status = 'dispatched' AND id != ?`)
+    .get(to, taskId) as { id: string } | undefined;
+  if (busy && !bool(args, 'force', false)) {
+    fail(
+      `worker "${to}" is still working on ${busy.id}. ` +
+        `Spawn another worker for parallel work, or pass --force to interrupt it.`,
+    );
+  }
 
   const readyTimeout = num(args, 'ready-timeout', 60) * 1000;
   if (readyTimeout > 0 && !waitReady(worker.pane_id, readyTimeout)) {
@@ -500,6 +539,31 @@ function cmdAttach(args: Args): void {
   spawnSync('tmux', ['attach', '-t', s], { stdio: 'inherit' });
 }
 
+function cmdWatch(args: Args): void {
+  const s = session(args);
+  if (!hasSession(s)) fail(`session "${s}" is not running (orchestmux up)`);
+
+  if (insideTmux()) {
+    if (currentSessionName() === s) {
+      console.log(`already watching "${s}"`);
+      return;
+    }
+    switchClient(s);
+    console.log(`switched to "${s}" (prefix + L to switch back)`);
+    return;
+  }
+  if (attachedClients(s) > 0) {
+    console.log(`"${s}" is already attached in another terminal`);
+    return;
+  }
+  const opened = openTerminal(s);
+  if (opened) {
+    console.log(`opened ${opened} attached to "${s}"`);
+    return;
+  }
+  console.log(`could not open a terminal automatically — run this yourself:\n  tmux attach -t ${s}`);
+}
+
 function oneLine(s: string, max: number): string {
   const flat = s.replace(/\s+/g, ' ').trim();
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
@@ -512,12 +576,14 @@ const HELP = `orchestmux — multi-agent orchestration for coding CLIs in tmux
         [--here]                            ...split THIS window instead (watch live, no attach)
   task add "<spec>"                         create a task, prints its id
   task list [--json]                        list tasks
+  task update --id <id> --status <s>        recover a stuck task (pending|dispatched|done|failed)
+  task rm --id <id>                         delete a task
   dispatch --task <id> --to <w>             inject the task + protocol into a worker
   wait [--types done,ask] [--timeout 900]   block until a worker reports (exit 2 on timeout)
   reply --id <msg> --body "<answer>"        answer a worker's ask
   send --to <w> --body "<text>"             message a worker
   ps [--json]                               workers, tasks, unread count
-  attach                                    attach to the tmux session
+  attach | watch                            attach to the session | open a terminal attached to it
   kill --name <w> | down                    remove one worker | tear down the session
 
   called by workers (inside a spawned pane):
@@ -544,6 +610,7 @@ function main(): void {
 
   if (cmd === 'up') return cmdUp(args);
   if (cmd === 'attach') return cmdAttach(args);
+  if (cmd === 'watch') return cmdWatch(args);
 
   const db = openDb();
   switch (cmd) {

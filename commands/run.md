@@ -10,11 +10,21 @@ Run `$ARGUMENTS` across one or more agent workers and report back.
 
 ## 1. Understand the request
 
-From `$ARGUMENTS`, decide:
+From `$ARGUMENTS`, decide **which shape** the work has:
 
-- **What work** — one task, or several independent pieces worth parallelising.
-- **Which agents** — use the ones the user named. If unnamed, pick `codex` for
-  analysis and `claude` for large refactors, and say which you chose and why.
+- **Ensemble** — the same task, given to several agents at once, so their
+  answers can be compared and the best parts combined. Use this when the user
+  names multiple agents for one job ("codex랑 kimi로 X"), asks for the best
+  result, or when the task is judgement-heavy (a design, a plan, an improvement
+  proposal) where different models genuinely differ.
+- **Split** — different, independent pieces to different workers. Use this when
+  the job decomposes cleanly and the pieces do not overlap.
+
+Then decide:
+
+- **Which agents** — use the ones the user named. If unnamed, list what is
+  available (`orchestmux ps`, or the agents in the skill) and pick: `codex` for
+  analysis, `claude` for large refactors. Say which you chose and why.
 - **Where** — the current directory unless the user names a path.
 
 If the request is too vague to write a self-contained spec from (no target, no
@@ -45,12 +55,26 @@ Write the spec as if the worker knows nothing — it receives that text and
 nothing else. Absolute paths, explicit constraints (`read-only`, `do not
 commit`), and a clear definition of done.
 
+**One worker runs one task at a time.** Dispatching again to a busy worker
+interrupts it and its first report is lost, so `dispatch` refuses. Parallelism
+comes from more workers, never from more dispatches.
+
+Ensemble — one spec, one task per agent, so each report is attributable:
+
 ```bash
-TASK=$(orchestmux task add "<spec>")
-orchestmux dispatch --task $TASK --to <w>
+SPEC="<the shared spec>"
+for a in codex kimi; do
+  orchestmux spawn --name w_$a --agent $a --yolo
+  orchestmux dispatch --task "$(orchestmux task add "$SPEC")" --to w_$a
+done
 ```
 
-Repeat per worker for parallel work.
+Split — a different spec per worker:
+
+```bash
+orchestmux dispatch --task "$(orchestmux task add "<spec A>")" --to w1
+orchestmux dispatch --task "$(orchestmux task add "<spec B>")" --to w2
+```
 
 ## 4. Wait
 
@@ -67,10 +91,22 @@ orchestmux wait --types done,ask,escalation --timeout 900
 
 ## 5. Report
 
-Read each `done` body, verify anything load-bearing yourself — the worker may
-be wrong — then summarise in the user's language, saying which worker did what.
-If a worker failed or went silent, say so plainly instead of quietly redoing
-its work.
+Read each `done` body and verify anything load-bearing yourself — the worker
+may be wrong. Then summarise in the user's language, saying which worker did
+what. If a worker failed or went silent, say so plainly instead of quietly
+redoing its work.
+
+For an **ensemble**, do not just concatenate the answers. Compare them:
+
+- Where do they agree? Agreement across independent models is the strongest
+  signal you have — lead with it.
+- Where do they disagree? Say so explicitly, check the disagreement against the
+  code yourself, and state which one holds up and why.
+- What did only one of them find? Verify it before including it; a unique
+  finding is either the most valuable result or a hallucination.
+
+Deliver one synthesised answer with the best parts of each, and attribute the
+non-obvious findings to the agent that produced them.
 
 Leave workers running unless the user asks to clean up; mention
 `/orchestmux:down` as the option.

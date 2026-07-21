@@ -56,9 +56,14 @@ orchestmux dispatch --task $TASK --to w1
 orchestmux wait --timeout 900                   # blocks; exit 2 == timeout
 ```
 
-If the user wants to watch the workers and you are running inside tmux, spawn
-with `--here` so panes split the user's current window — `attach` cannot nest
-into a second tmux session, so a dedicated session would be invisible to them.
+Workers land in the caller's own tmux window automatically when there is one:
+orchestmux finds it through the process tree, so this works even though agent
+harnesses strip `$TMUX`. Pass `--no-here` to force a dedicated session instead.
+
+When there is no enclosing tmux window, workers go to the `orchestmux` session,
+which nobody is watching by default. Run `orchestmux watch` — it opens a
+terminal attached to that session (Windows Terminal under WSL, Terminal.app on
+macOS) so the user can actually see the agents work.
 
 Rules that matter:
 
@@ -68,6 +73,9 @@ Rules that matter:
 - **`--yolo` or it stalls.** Without it, codex/claude/gemini stop at an approval
   prompt and never report. Mention to the user that this grants unattended
   write access the first time you use it.
+- **One worker, one task at a time.** Dispatching to a busy worker interrupts
+  it and loses its first report, so `dispatch` refuses. Parallelism comes from
+  spawning more workers, never from more dispatches to one.
 - **One `wait` returns one message.** With N workers running, loop N times.
 - **Timeout is a checkpoint, not a failure.** `wait` exits 2 when nothing
   arrived; real coding tasks run 15-60 minutes. Keep waiting, or check
@@ -81,6 +89,20 @@ orchestmux wait                       # → [ask] w1 … id=m_9f8e7d6c
 orchestmux reply --id m_9f8e7d6c --body "<decision>"
 orchestmux wait                       # keep waiting for the eventual done
 ```
+
+## Two shapes of parallel work
+
+- **Ensemble** — the same spec to several agents at once, then compare and
+  synthesise. Use when the user names multiple agents for one job, asks for the
+  best result, or the task is judgement-heavy (designs, plans, improvement
+  proposals) where models genuinely differ. Give each agent its own task id so
+  reports stay attributable.
+- **Split** — independent pieces to different workers. Use when the job
+  decomposes cleanly and the pieces do not overlap.
+
+When synthesising an ensemble, do not concatenate. Lead with what the agents
+agree on, name the disagreements and check them against the code yourself, and
+verify anything only one agent found before including it.
 
 ## Choosing workers
 

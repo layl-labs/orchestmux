@@ -80,14 +80,19 @@ for i in 1 2; do orchestmux wait --timeout 1800; done
 
 기본적으로 워커는 전용 `orchestmux` tmux 세션에 살고, `orchestmux attach`로 본다.
 
-**이미 tmux 안에 있다면** attach가 세션 중첩을 거부한다. 그럴 땐 `--here`를
-쓴다. 워커가 현재 창의 split pane이 되어서, 뜨는 즉시 보이고 세션을 옮길 일이
-없다.
+호출자가 **이미 tmux 안에 있으면** 워커가 그 창에 자동으로 split된다. 뜨는 즉시
+보인다는 뜻이다. 그 창은 `$TMUX`가 아니라 **프로세스 트리로 찾는다** — 에이전트
+하네스가 환경변수를 걸러내는 일이 흔하기 때문이다. 전용 세션을 쓰고 싶으면
+`--no-here`를 준다.
 
 ```bash
-orchestmux spawn --name w1 --agent codex --yolo --here
-orchestmux spawn --name w2 --agent kimi  --yolo --here
+orchestmux spawn --name w1 --agent codex --yolo
+orchestmux spawn --name w2 --agent kimi  --yolo
 ```
+
+tmux 밖에서 호출하면 워커는 `orchestmux` 세션으로 가는데, 기본적으로 아무도
+붙어있지 않다. `orchestmux watch`가 그걸 해결한다 — 이미 attach된 터미널 창을
+열어준다 (WSL은 Windows Terminal, macOS는 Terminal.app).
 
 ```
 ┌─ 내 창 ─────────────────────────────────────────┐
@@ -139,12 +144,15 @@ orchestmux reply --id m_9f8e7d6c --body "v2 엔드포인트를 써라."
 | `spawn --name <w> --agent <a> [--yolo] [--here]` | 워커 pane 추가 (`--here`는 현재 창 split) |
 | `task add "<명세>"` | 작업 생성, id 출력 |
 | `task list [--json]` | 작업 목록 |
+| `task update --id <id> --status <s>` | `dispatched`에 갇힌 작업 복구 |
+| `task rm --id <id>` | 작업 삭제 |
 | `dispatch --task <id> --to <w>` | 작업+프로토콜을 워커에 주입 |
 | `wait [--types done,ask] [--timeout 900]` | 워커 보고까지 블로킹 |
 | `reply --id <msg> --body "<답>"` | 워커의 `ask`에 답변 |
 | `send --to <w> --body "<텍스트>"` | 워커에게 메시지 |
 | `ps [--json]` | 워커·작업·안 읽은 보고 수 |
 | `attach` | tmux 세션에 붙기 |
+| `watch` | 이미 attach된 터미널 창 열기 |
 | `kill --name <w>` / `down` | 워커 1개 제거 / 전체 정리 |
 
 워커(스폰된 pane 안)가 호출하는 것:
@@ -153,6 +161,10 @@ orchestmux reply --id m_9f8e7d6c --body "v2 엔드포인트를 써라."
 | --- | --- |
 | `done --task <id> --body "<요약>" [--failed]` | 완료 보고 |
 | `ask --task <id> --question "<질문>"` | 코디네이터에게 블로킹 질문 |
+
+워커 하나는 한 번에 작업 하나만 한다. 작업 중인 워커에 다시 dispatch하면 그
+에이전트를 끊어버려서 **첫 보고가 유실**되므로 `dispatch`가 거부한다. 병렬성은
+워커를 더 띄워서 얻는 것이지 dispatch를 더 해서 얻는 게 아니다.
 
 `wait`는 타임아웃 시 exit `2`로 끝난다. 이건 **실패가 아니라 체크포인트**다.
 긴 작업은 창 하나를 넘기기 일쑤이므로 에러로 취급하지 말고 루프를 돌린다:
