@@ -110,8 +110,8 @@ sitting in.
 
 ## How dispatch works
 
-`dispatch` pastes the task spec into the worker's pane followed by a short
-protocol block:
+`dispatch` relaunches the worker's pane with the agent, handing it the task
+spec and a short protocol block as a launch argument:
 
 ```
 [ORCHESTMUX TASK t_a1b2c3d4]
@@ -129,6 +129,13 @@ If you are blocked and need a decision before you can continue, run:
 The worker's pane is spawned with `ORCHESTMUX_WORKER` set, so `done` and `ask`
 know who is calling without any extra flags. That callback is the whole
 mechanism — completion is a recorded fact, not an inference from scrollback.
+
+The prompt never gets typed into a live composer. Doing that has to win three
+races — the agent must be mounted, the bracketed paste must finish before the
+submit key lands, and the pane must not be in tmux copy-mode — and losing any
+one of them strands the prompt unsent with no error. Launch arguments have none
+of those failure modes, so each dispatch relaunches the agent with a clean
+context.
 
 `ask` blocks the worker until the coordinator answers:
 

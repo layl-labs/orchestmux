@@ -16,6 +16,8 @@ export interface Worker {
   session: string;
   /** tmux window the pane lives in, e.g. "orchestmux:workers" or "dev:@3". */
   window: string;
+  /** 1 when the worker was spawned with --yolo; re-applied on every relaunch. */
+  autonomous: number;
   cwd: string;
   created_at: string;
 }
@@ -105,6 +107,9 @@ function migrate(db: DatabaseSync): void {
   if (!columns.has('window')) {
     db.exec(`ALTER TABLE workers ADD COLUMN window TEXT NOT NULL DEFAULT ''`);
     db.exec(`UPDATE workers SET window = session || ':workers' WHERE window = ''`);
+  }
+  if (!columns.has('autonomous')) {
+    db.exec(`ALTER TABLE workers ADD COLUMN autonomous INTEGER NOT NULL DEFAULT 0`);
   }
 }
 

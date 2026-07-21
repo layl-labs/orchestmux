@@ -21,9 +21,7 @@ import {
   addPane,
   paneAlive,
   killPane,
-  capturePane,
-  sendPrompt,
-  sendEnter,
+  respawnPane,
   tmux,
   insideTmux,
   currentWindow,
@@ -176,9 +174,9 @@ function cmdSpawn(db: DatabaseSync, args: Args): void {
   });
 
   db.prepare(
-    `INSERT INTO workers (name, agent, pane_id, session, window, cwd, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(name, agent, paneId, s, window, cwd, now());
+    `INSERT INTO workers (name, agent, pane_id, session, window, autonomous, cwd, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(name, agent, paneId, s, window, autonomous ? 1 : 0, cwd, now());
 
   console.log(`spawned ${name} (${agent}) in pane ${paneId}${inPlace ? ' (this window)' : ''}`);
   if (!inPlace) {
@@ -191,62 +189,6 @@ function cmdSpawn(db: DatabaseSync, args: Args): void {
   if (!autonomous && AGENTS[agent]!.autonomousArgs.length > 0) {
     console.log(`hint: this agent will stop for approval prompts — re-spawn with --yolo to let it run unattended`);
   }
-}
-
-/**
- * Prompts and TUIs are rarely byte-stable: shell themes render a clock, agents
- * animate spinners and elapsed-time counters. Comparing digit-free, whitespace-
- * collapsed text lets "idle" mean "nothing structural is changing".
- */
-function settleSignature(raw: string): string {
-  return raw
-    // eslint-disable-next-line no-control-regex
-    .replace(/\[[0-9;?]*[a-zA-Z]/g, '')
-    .replace(/[0-9]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/**
- * Submits whatever is sitting in the pane's composer.
- *
- * A bracketed paste is not instantaneous: agent TUIs are still consuming the
- * paste-end sequence for a while after `paste-buffer` returns, and an Enter
- * that lands during that window is swallowed — the prompt then sits unsent in
- * the composer forever. So: wait for the paste to settle, press Enter, and
- * confirm the pane actually moved on before giving up.
- */
-function submit(paneId: string): void {
-  sleep(1200);
-  const before = settleSignature(capturePane(paneId, 30));
-  sendEnter(paneId);
-  sleep(1500);
-  if (settleSignature(capturePane(paneId, 30)) === before) {
-    sendEnter(paneId);
-  }
-}
-
-/** Best-effort TUI readiness: wait until the pane output stops changing. */
-function waitReady(paneId: string, timeoutMs: number): boolean {
-  const deadline = Date.now() + timeoutMs;
-  let previous = '';
-  let stable = 0;
-  while (Date.now() < deadline) {
-    sleep(700);
-    let current = '';
-    try {
-      current = settleSignature(capturePane(paneId, 40));
-    } catch {
-      return false;
-    }
-    if (current.length > 0 && current === previous) {
-      if (++stable >= 2) return true;
-    } else {
-      stable = 0;
-    }
-    previous = current;
-  }
-  return false;
 }
 
 function cmdTask(db: DatabaseSync, args: Args): void {
@@ -316,13 +258,19 @@ function cmdDispatch(db: DatabaseSync, args: Args): void {
     );
   }
 
-  const readyTimeout = num(args, 'ready-timeout', 60) * 1000;
-  if (readyTimeout > 0 && !waitReady(worker.pane_id, readyTimeout)) {
-    console.error(`warning: ${to} did not settle within ${readyTimeout / 1000}s — sending anyway`);
-  }
-
-  sendPrompt(worker.pane_id, dispatchPrompt({ taskId, spec: task.spec, cli: cliInvocation() }));
-  submit(worker.pane_id);
+  // The prompt is handed to the agent as a launch argument and the pane is
+  // relaunched with it, rather than typed into a live composer. Pasting had to
+  // win three races (agent mounted, bracketed paste finished before the submit
+  // key, pane not in copy-mode) and silently stranded the prompt when it lost
+  // any of them.
+  const prompt = dispatchPrompt({ taskId, spec: task.spec, cli: cliInvocation() });
+  const command = buildCommand(worker.agent, worker.autonomous === 1, [], prompt);
+  respawnPane({
+    paneId: worker.pane_id,
+    cwd: worker.cwd,
+    env: { ORCHESTMUX_WORKER: to, ORCHESTMUX_SESSION: worker.session },
+    command,
+  });
 
   db.prepare(`UPDATE tasks SET status = 'dispatched', assignee = ?, updated_at = ? WHERE id = ?`).run(
     to,

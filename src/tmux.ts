@@ -210,6 +210,29 @@ export function addPane(opts: {
   return pane;
 }
 
+/** Replaces whatever runs in `paneId` with `command`, keeping the pane. */
+export function respawnPane(opts: {
+  paneId: string;
+  cwd: string;
+  env: Record<string, string>;
+  command: string;
+}): void {
+  const exports = Object.entries(opts.env)
+    .map(([k, v]) => `export ${k}=${shellQuote(v)};`)
+    .join(' ');
+  tmux([
+    'respawn-pane',
+    '-k',
+    '-t',
+    opts.paneId,
+    '-c',
+    opts.cwd,
+    'sh',
+    '-c',
+    `${exports} exec ${opts.command}`,
+  ]);
+}
+
 export function paneAlive(paneId: string): boolean {
   try {
     const out = execFileSync('tmux', ['list-panes', '-a', '-F', '#{pane_id}'], {
