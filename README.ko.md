@@ -10,10 +10,6 @@
 병렬로 굴려 줍니다. 워커는 전부 눈으로 보고 직접 개입할 수 있는 진짜 터미널
 pane입니다.
 
-![orchestmux demo](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo.gif)
-
-*하나의 작업을 codex와 opencode에 나눠 보내고, 두 보고를 수거하는 모습.*
-
 ## 무엇을 해 주나요
 
 Claude Code에 한 줄만 입력하면 됩니다.
@@ -110,7 +106,14 @@ CLI 1개 이상.
 ## 내부 구조 — CLI
 
 위의 모든 동작은 Claude가 작은 CLI를 조작하는 것입니다. 직접 스크립트로 쓸
-수도 있으며, 루프 전체가 이게 답니다.
+수도 있습니다.
+
+![orchestmux CLI를 직접 조작하는 모습](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo.gif)
+
+*CLI를 손으로 직접 조작하는 화면입니다 — 평소에는 이 명령들을 Claude가 대신
+입력합니다. 하나의 작업을 codex와 opencode에 보내고 두 보고를 수거하는 모습.*
+
+루프 전체가 이게 답니다.
 
 ```bash
 orchestmux up                                      # tmux 세션 생성

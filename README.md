@@ -10,10 +10,6 @@ in plain language, and it runs Codex, Kimi, Gemini, OpenCode — every coding
 CLI you're already subscribed to — in parallel, as real terminal panes you can
 watch and take over.
 
-![orchestmux demo](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo.gif)
-
-*One task dispatched to codex and opencode, both reports collected.*
-
 ## What it does
 
 You type one line into Claude Code:
@@ -111,8 +107,14 @@ saying so.
 
 ## Under the hood — the CLI
 
-Everything above is Claude driving a small CLI. You can script it yourself;
-this is the entire loop:
+Everything above is Claude driving a small CLI. You can script it yourself:
+
+![the orchestmux CLI driven by hand](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo.gif)
+
+*The CLI driven by hand — normally Claude types these for you. One task
+dispatched to codex and opencode, both reports collected.*
+
+This is the entire loop:
 
 ```bash
 orchestmux up                                      # tmux session
