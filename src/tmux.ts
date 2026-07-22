@@ -62,6 +62,8 @@ function ancestorPids(): Set<number> {
   return pids;
 }
 
+let enclosingWindowCache: string | null | undefined;
+
 /**
  * The tmux window this process is running under, or null.
  *
@@ -69,8 +71,17 @@ function ancestorPids(): Set<number> {
  * tools with a sanitised environment, so a coordinator running inside tmux
  * looks like it is outside. Matching a pane's process against our own ancestry
  * answers the question the env var was supposed to.
+ *
+ * Memoised: the walk forks `ps` once per ancestor, the answer cannot change
+ * within one CLI invocation, and spawn alone used to ask three times.
  */
 export function enclosingWindow(): string | null {
+  if (enclosingWindowCache !== undefined) return enclosingWindowCache;
+  enclosingWindowCache = findEnclosingWindow();
+  return enclosingWindowCache;
+}
+
+function findEnclosingWindow(): string | null {
   let listing: string;
   try {
     listing = execFileSync(
@@ -121,7 +132,10 @@ export function attachedClients(session: string): number {
  * command used, or null when no terminal could be launched.
  */
 export function openTerminal(session: string): string | null {
-  const attach = `tmux attach -t ${session}`;
+  // The session name ends up inside a shell command (and, on macOS, inside an
+  // AppleScript string literal) — quote it for both layers, not just the happy
+  // path of a bare word.
+  const attach = `tmux attach -t ${shellQuote(`=${session}`)}`;
   const isWsl = Boolean(process.env.WSL_DISTRO_NAME);
 
   const candidates: { cmd: string; args: string[]; label: string }[] = [];
@@ -138,9 +152,10 @@ export function openTerminal(session: string): string | null {
       label: 'cmd start',
     });
   } else if (process.platform === 'darwin') {
+    const script = attach.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
     candidates.push({
       cmd: 'osascript',
-      args: ['-e', `tell application "Terminal" to do script "${attach}"`],
+      args: ['-e', `tell application "Terminal" to do script "${script}"`],
       label: 'Terminal.app',
     });
   } else {
@@ -190,6 +205,7 @@ export function addPane(opts: {
       '-c',
       `${exports} exec ${opts.command}`,
     ]);
+    retainOnExit(pane);
     return pane;
   }
 
@@ -206,6 +222,7 @@ export function addPane(opts: {
     ...envArgs,
     opts.command,
   ]).trim();
+  retainOnExit(pane);
   tmux(['select-layout', '-t', opts.window, 'tiled']);
   return pane;
 }
@@ -231,17 +248,51 @@ export function respawnPane(opts: {
     '-c',
     `${exports} exec ${opts.command}`,
   ]);
+  retainOnExit(opts.paneId);
 }
 
-export function paneAlive(paneId: string): boolean {
+/**
+ * pane_id -> "the process in it is still running". Worker panes are kept
+ * around after their process exits (remain-on-exit), so existence and
+ * liveness are different questions — a dead pane still has its scrollback
+ * and can be revived by respawn-pane, but nothing in it will ever report.
+ */
+export function paneStates(): Map<string, boolean> {
+  const states = new Map<string, boolean>();
   try {
-    const out = execFileSync('tmux', ['list-panes', '-a', '-F', '#{pane_id}'], {
+    const out = execFileSync('tmux', ['list-panes', '-a', '-F', '#{pane_id} #{pane_dead}'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     });
-    return out.split('\n').includes(paneId);
+    for (const line of out.trim().split('\n')) {
+      const [id, dead] = line.split(' ');
+      if (id) states.set(id, dead !== '1');
+    }
   } catch {
-    return false;
+    /* no server — nothing exists, nothing is alive */
+  }
+  return states;
+}
+
+export function paneAlive(paneId: string, states = paneStates()): boolean {
+  return states.get(paneId) === true;
+}
+
+export function paneExists(paneId: string, states = paneStates()): boolean {
+  return states.has(paneId);
+}
+
+/**
+ * Keeps the pane (and its scrollback) around after the process exits. Without
+ * this a headless agent's pane closes the moment it finishes, destroying the
+ * only record of how it reached its answer. Pane-scoped options need tmux
+ * >= 3.0; on older servers the pane just closes as before.
+ */
+function retainOnExit(paneId: string): void {
+  try {
+    tmux(['set-option', '-p', '-t', paneId, 'remain-on-exit', 'on']);
+  } catch {
+    /* best effort */
   }
 }
 

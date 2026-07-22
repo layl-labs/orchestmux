@@ -83,6 +83,11 @@ Rules that matter:
   arrived; real coding tasks run 15-60 minutes. Keep waiting, or check
   `orchestmux ps` and `tmux capture-pane -p -t <pane>` for liveness. Do not kill
   a worker just because it has not reported yet.
+- **An `escalation` message means the worker died.** `wait` watches assignee
+  panes: if one stops running mid-task, the task is marked `failed` and `wait`
+  returns an escalation instead of blocking out the timeout. Read the pane
+  scrollback (`tmux capture-pane -p -t <pane>`) to see why, then re-dispatch
+  or report the failure to the user.
 - **Answer `ask` promptly.** A worker that called `ask` is blocked until you
   `reply`; it cannot make progress on its own.
 
@@ -136,6 +141,7 @@ orchestmux sweep --dry-run    # preview: idle and dead workers
 orchestmux sweep              # remove them; workers still working are kept
 orchestmux kill --name w1     # one specific worker
 orchestmux down               # whole session
+orchestmux task clear         # drop finished tasks and their messages
 ```
 
 Do not sweep or kill immediately after reporting. The pane scrollback is the
@@ -161,5 +167,6 @@ check a claim. Sweep once the user has the results, or when they ask.
 
 Agents: `claude`, `codex`, `kimi`, `opencode`, `gemini`, `shell`.
 
-Note: `shell` is a bare shell and **executes** a dispatched preamble line by
-line. Use it to test the protocol by hand, never as a real dispatch target.
+Note: `shell` is a bare shell for testing the protocol by hand (call `done`
+from inside the pane yourself). Never `dispatch` to it: the prompt arrives as
+a launch argument, which a shell treats as a script path and exits on.

@@ -193,7 +193,9 @@ attach된 터미널 창을 열어 줍니다(WSL은 Windows Terminal, macOS는 Te
 
 ### pane은 왜 자동으로 닫히지 않나요
 
-워커가 보고를 마쳐도 pane은 **의도적으로 열어 둡니다.**
+워커가 보고를 마쳐도 pane은 **의도적으로 열어 둡니다.** `kimi`나 `gemini`처럼
+프롬프트 하나를 처리하고 프로세스가 종료되는 에이전트도 마찬가지입니다 —
+pane은 `remain-on-exit`로 유지되고, `dispatch`가 다시 살려서 재사용합니다.
 
 스크롤백은 그 워커가 결론에 *어떻게* 도달했는지 남아 있는 유일한 기록이며,
 에이전트의 보고는 틀릴 수 있습니다. `done` 시점에 pane을 닫아 버리면 정작 그 보고를
@@ -202,10 +204,14 @@ attach된 터미널 창을 열어 줍니다(WSL은 Windows Terminal, macOS는 Te
 ```bash
 orchestmux sweep --dry-run   # 무엇이 지워질지 미리 확인
 orchestmux sweep             # 아직 작업 중인 워커는 그대로 유지됩니다
+orchestmux task clear        # 끝난 작업과 그 메시지를 정리합니다
 ```
 
-보고 전에 pane이 죽어 버린 워커는 해당 작업도 `failed`로 표시됩니다. 아무것도
-`dispatched` 상태로 남아 진행 중인 척하지 않도록 하기 위해서입니다.
+보고 전에 워커가 죽어도 코디네이터가 방치되지 않습니다. 실행 중인 `wait`이 죽은
+pane을 감지하면 해당 작업을 `failed`로 표시하고 타임아웃을 기다리는 대신
+`escalation` 메시지를 즉시 돌려줍니다. `sweep`·`kill`·`down`도 제거하는 워커의
+진행 중 작업을 같은 방식으로 `failed` 처리하므로, 아무것도 `dispatched` 상태로
+남아 진행 중인 척하지 않습니다.
 
 ---
 
@@ -261,8 +267,8 @@ orchestmux reply --id m_9f8e7d6c --body "v2 엔드포인트를 사용하세요."
 | `task add "<명세>"` | 작업을 생성하고 id를 출력합니다 |
 | `task list [--json]` | 작업 목록을 조회합니다 |
 | `task update --id <id> --status <s>` | `dispatched`에 갇힌 작업을 복구합니다 |
-| `task rm --id <id>` | 작업을 삭제합니다 |
-| `dispatch --task <id> --to <w>` | 작업과 프로토콜을 워커에 전달합니다 |
+| `task rm --id <id>` / `task clear` | 작업 1개 삭제 / 끝난 작업 전부 정리 |
+| `dispatch --task <id> --to <w> [--force]` | 작업과 프로토콜을 워커에 전달합니다 |
 | `wait [--types done,ask] [--timeout 900]` | 워커 보고까지 블로킹합니다 |
 | `wait --count <n>` / `wait --all` | n개 보고를 모을 때까지 / 쌓인 것 전부 |
 | `report [--task <id>] [--json]` | `wait`이 수거한 보고를 다시 읽습니다 |
@@ -283,8 +289,11 @@ orchestmux reply --id m_9f8e7d6c --body "v2 엔드포인트를 사용하세요."
 
 **하나. 워커 하나는 한 번에 작업 하나만 수행합니다.**
 작업 중인 워커에 다시 dispatch하면 그 에이전트를 중간에 끊어 버려 **첫 번째 보고가
-유실**되므로, `dispatch`가 이를 거부합니다. 병렬성은 워커를 더 띄워서 얻는 것이지
-dispatch를 더 해서 얻는 것이 아닙니다.
+유실**되므로, `dispatch`가 이를 거부합니다(`--force`를 쓰면 끊되, 버려진 작업은
+`failed`로 기록됩니다). 병렬성은 워커를 더 띄워서 얻는 것이지 dispatch를 더 해서
+얻는 것이 아닙니다. 이미 보고가 끝난 작업에 대한 `done`도 거부됩니다 — 에이전트는
+출력을 놓친 명령을 재시도하곤 하는데, 그 중복이 다른 워커의 답으로 집계되면
+안 되기 때문입니다.
 
 **둘. `wait`의 타임아웃(exit `2`)은 실패가 아니라 체크포인트입니다.**
 실제 코딩 작업은 15~60분을 넘기는 일이 흔합니다. 오류로 처리하지 마시고 루프를
@@ -340,9 +349,9 @@ until orchestmux wait --timeout 600; do echo "아직 작업 중입니다…"; do
 orchestmux spawn --name w1 --agent codex --yolo -- --model gpt-5.5
 ```
 
-> `shell`은 일반 셸입니다. 프로토콜을 손으로 시험해 볼 때 유용하지만, 맨 셸은
-> 전달된 preamble을 한 줄씩 실행해 버립니다. `dispatch` 대상으로 사용하면서
-> 에이전트와 같은 동작을 기대하면 안 됩니다.
+> `shell`은 일반 셸입니다. pane 안에서 직접 `done`을 호출해 프로토콜을 손으로
+> 시험해 볼 때 유용합니다. 다만 `dispatch` 대상으로는 쓰지 마세요 — 프롬프트가
+> 실행 인자로 전달되는데, 맨 셸은 이를 스크립트 경로로 해석하고 즉시 종료합니다.
 
 ---
 
@@ -378,10 +387,14 @@ orchestmux wait --count 2 --timeout 1800    # 둘 다 답할 때까지 붙잡습
 ## 상태 저장
 
 모든 상태는 `~/.orchestmux/state.db`에 저장됩니다(`ORCHESTMUX_HOME`으로 변경
-가능). 워커, 작업, 메시지 로그가 이곳에 기록됩니다.
+가능). 워커, 작업, 메시지 로그가 이곳에 기록되며, **전부 세션 단위로
+격리됩니다.** 한 세션의 `wait`은 그 세션의 보고만 보고, 워커 이름은 세션 안에서만
+유일하면 되며, 워커는 pane 환경변수로 자기 세션을 물려받아 보고가 dispatch한
+세션으로 정확히 돌아옵니다.
 
-세션은 기본적으로 tmux 세션 `orchestmux`를 사용하며(`--session` 또는
-`ORCHESTMUX_SESSION`으로 변경), 독립된 여러 무리를 나란히 운영할 수 있습니다.
+세션은 기본적으로 `orchestmux`를 사용하며(`--session` 또는
+`ORCHESTMUX_SESSION`으로 변경), 독립된 여러 무리가 서로의 보고를 가로채는 일
+없이 나란히 운영될 수 있습니다.
 
 ---
 

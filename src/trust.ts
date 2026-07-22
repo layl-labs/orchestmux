@@ -28,7 +28,7 @@ export function isCodexTrusted(dir: string, configPath = CODEX_CONFIG): boolean 
   } catch {
     return false;
   }
-  return findProjectHeader(toml, resolve(dir)) !== -1;
+  return hasProjectHeader(toml, resolve(dir));
 }
 
 /**
@@ -43,7 +43,7 @@ export function trustCodexDirectory(dir: string, configPath = CODEX_CONFIG): Tru
   } catch {
     /* first run — the file is created below */
   }
-  if (findProjectHeader(toml, target) !== -1) return { changed: false, path: target };
+  if (hasProjectHeader(toml, target)) return { changed: false, path: target };
 
   const eol = toml.includes('\r\n') ? '\r\n' : '\n';
   const block = [`[projects."${escapeToml(target)}"]`, `trust_level = "trusted"`].join(eol);
@@ -53,9 +53,19 @@ export function trustCodexDirectory(dir: string, configPath = CODEX_CONFIG): Tru
   return { changed: true, path: target };
 }
 
-/** Index of the `[projects."<dir>"]` header, or -1. */
-function findProjectHeader(toml: string, dir: string): number {
-  return toml.indexOf(`[projects."${escapeToml(dir)}"]`);
+/**
+ * True when a `[projects."<dir>"]` header for exactly `dir` is present.
+ * Tolerates the formatting codex itself may write — whitespace inside the
+ * brackets and either quote style — so an existing entry is never duplicated
+ * just because it was not byte-identical to what we would append.
+ */
+function hasProjectHeader(toml: string, dir: string): boolean {
+  const rx = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const header = new RegExp(
+    `^\\s*\\[\\s*projects\\s*\\.\\s*("${rx(escapeToml(dir))}"|'${rx(dir)}')\\s*\\]`,
+    'm',
+  );
+  return header.test(toml);
 }
 
 function escapeToml(s: string): string {

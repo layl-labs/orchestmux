@@ -19,7 +19,7 @@ export function makeHome(t) {
   return home;
 }
 
-function env(home) {
+function env(home, extraEnv = {}) {
   return {
     ...process.env,
     ORCHESTMUX_HOME: home,
@@ -28,21 +28,22 @@ function env(home) {
     ORCHESTMUX_SESSION: 'orchestmux-test',
     ORCHESTMUX_WORKER: '',
     TMUX: '',
+    ...extraEnv,
   };
 }
 
 const NODE_ARGS = ['--disable-warning=ExperimentalWarning'];
 
-export function run(home, args) {
+export function run(home, args, extraEnv) {
   const r = spawnSync(process.execPath, [...NODE_ARGS, CLI, ...args], {
     encoding: 'utf8',
-    env: env(home),
+    env: env(home, extraEnv),
   });
   return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
 }
 
-export function runJson(home, args) {
-  const r = run(home, args);
+export function runJson(home, args, extraEnv) {
+  const r = run(home, args, extraEnv);
   if (r.status !== 0) {
     throw new Error(`orchestmux ${args.join(' ')} exited ${r.status}: ${r.stderr || r.stdout}`);
   }
@@ -50,8 +51,8 @@ export function runJson(home, args) {
 }
 
 /** Starts a blocking command (`ask`, `wait`) without waiting for it to finish. */
-export function runAsync(home, args) {
-  const child = spawn(process.execPath, [...NODE_ARGS, CLI, ...args], { env: env(home) });
+export function runAsync(home, args, extraEnv) {
+  const child = spawn(process.execPath, [...NODE_ARGS, CLI, ...args], { env: env(home, extraEnv) });
   let stdout = '';
   let stderr = '';
   child.stdout.on('data', (d) => (stdout += d));
@@ -62,6 +63,7 @@ export function runAsync(home, args) {
   return { child, done };
 }
 
-export function taskById(home, id) {
-  return runJson(home, ['task', 'list', '--json']).find((t) => t.id === id);
+export function taskById(home, id, session) {
+  const args = ['task', 'list', '--json', ...(session ? ['--session', session] : [])];
+  return runJson(home, args).find((t) => t.id === id);
 }

@@ -184,18 +184,24 @@ Panes are real: scroll back, type into them, take an agent over mid-task.
 `orchestmux down` removes worker panes but never kills a session you are
 sitting in.
 
-Panes deliberately stay open after a worker reports. The scrollback is the only
-record of *how* it reached its conclusion, and reports can be wrong — closing
-the pane on `done` would destroy the evidence you need to check one. Clear the
-finished ones when you have read the results:
+Panes deliberately stay open after a worker reports — even when the agent
+process exits on its own, as `kimi` and `gemini` do after a one-shot prompt
+(the pane is kept with `remain-on-exit`, and `dispatch` can revive it). The
+scrollback is the only record of *how* a worker reached its conclusion, and
+reports can be wrong — closing the pane on `done` would destroy the evidence
+you need to check one. Clear the finished ones when you have read the results:
 
 ```bash
 orchestmux sweep --dry-run   # what would go
 orchestmux sweep             # workers still working are kept
+orchestmux task clear        # drop finished tasks and their messages
 ```
 
-A worker whose pane died before reporting also has its task marked `failed`,
-so nothing sits in `dispatched` pretending to still be in flight.
+A worker that dies before reporting does not strand you either: a running
+`wait` notices the dead pane, marks the task `failed`, and returns an
+`escalation` message instead of blocking out the timeout. `sweep`, `kill`, and
+`down` mark the in-flight tasks of the workers they remove the same way, so
+nothing sits in `dispatched` pretending to still be in flight.
 
 ## How dispatch works
 
@@ -243,8 +249,8 @@ orchestmux reply --id m_9f8e7d6c --body "Use the v2 endpoint."
 | `task add "<spec>"` | Create a task, prints its id |
 | `task list [--json]` | List tasks |
 | `task update --id <id> --status <s>` | Recover a task stuck in `dispatched` |
-| `task rm --id <id>` | Delete a task |
-| `dispatch --task <id> --to <w>` | Inject task + protocol into a worker |
+| `task rm --id <id>` / `task clear` | Delete one task / all finished ones |
+| `dispatch --task <id> --to <w> [--force]` | Inject task + protocol into a worker |
 | `wait [--types done,ask] [--timeout 900]` | Block until a worker reports |
 | `wait --count <n>` / `wait --all` | Collect n reports, or everything queued |
 | `report [--task <id>] [--json]` | Re-read reports `wait` already collected |
@@ -263,8 +269,11 @@ Called by workers inside a spawned pane:
 | `ask --task <id> --question "<q>"` | Blocking question to the coordinator |
 
 One worker runs one task at a time: dispatching again to a busy worker
-interrupts it and loses its first report, so `dispatch` refuses. Parallelism
-comes from more workers, never from more dispatches.
+interrupts it and loses its first report, so `dispatch` refuses (`--force`
+interrupts anyway and marks the abandoned task `failed`). Parallelism comes
+from more workers, never from more dispatches. A `done` on a task that already
+has a report is refused too — agents retry commands whose output they missed,
+and the duplicate must not count as a second worker's answer.
 
 `wait` exits `2` on timeout — a checkpoint, not a failure. Long tasks routinely
 outlive one window, so loop on it rather than treating it as an error:
@@ -314,10 +323,10 @@ Extra arguments after the flags are passed to the agent:
 orchestmux spawn --name w1 --agent codex --yolo -- --model gpt-5.5
 ```
 
-`shell` spawns a plain shell. It is useful for exercising the protocol by hand,
-but note that a bare shell **executes** the pasted preamble line by line — do
-not `dispatch` to it and expect agent-like behaviour. Call `done` yourself
-instead.
+`shell` spawns a plain shell. It is useful for exercising the protocol by hand
+— call `done` yourself from inside the pane. Do not `dispatch` to it: the
+prompt is passed as a launch argument, which a bare shell treats as a script
+path and exits on immediately.
 
 ## Two shapes of parallel work
 
@@ -348,9 +357,13 @@ decomposes cleanly and the pieces do not touch each other.
 ## State
 
 Everything lives in `~/.orchestmux/state.db` (override with `ORCHESTMUX_HOME`):
-workers, tasks, and the message log. Sessions default to the tmux session
-`orchestmux` (override with `--session` or `ORCHESTMUX_SESSION`), so several
-independent swarms can run side by side.
+workers, tasks, and the message log. All of it is scoped per session — a
+session's `wait` only ever sees that session's reports, worker names only have
+to be unique within one, and workers inherit their session through the pane
+environment so their reports land back where the dispatch came from. Sessions
+default to `orchestmux` (override with `--session` or `ORCHESTMUX_SESSION`),
+so several independent swarms can run side by side without stealing each
+other's reports.
 
 ## Scope
 

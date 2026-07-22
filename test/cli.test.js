@@ -360,3 +360,112 @@ test('done refuses to guess which worker is reporting', (t) => {
   assert.match(r.stderr, /cannot tell which worker this is/);
   assert.equal(taskById(home, id).status, 'pending', 'an unattributable report must not close a task');
 });
+
+test('a second done on an already-reported task is refused', (t) => {
+  const home = makeHome(t);
+  const id = addTask(home);
+  run(home, ['done', '--task', id, '--from', 'w1', '--body', 'first report']);
+
+  // Agents retry commands whose output they never saw; the duplicate must not
+  // become a second message, or it would satisfy an ensemble wait on its own.
+  const again = run(home, ['done', '--task', id, '--from', 'w1', '--body', 'accidental retry']);
+  assert.equal(again.status, 1);
+  assert.match(again.stderr, /already has a report/);
+  assert.equal(taskById(home, id).result, 'first report');
+
+  // A deliberate replacement is still possible.
+  const forced = run(home, ['done', '--task', id, '--from', 'w1', '--force', '--body', 'corrected']);
+  assert.equal(forced.status, 0, forced.stderr);
+  assert.equal(taskById(home, id).result, 'corrected');
+});
+
+test('sessions do not see each other\'s tasks or reports', (t) => {
+  const home = makeHome(t);
+  const idA = run(home, ['task', 'add', 'work for swarm A', '--session', 'swarm-a']).stdout.trim();
+  run(home, ['done', '--task', idA, '--from', 'w1', '--body', 'A finished']);
+
+  // The report belongs to swarm A; a coordinator waiting on swarm B must not
+  // consume it — that is exactly the report-stealing bug sessions exist to fix.
+  const stolen = run(home, ['wait', '--json', '--timeout', '0.5', '--session', 'swarm-b']);
+  assert.equal(stolen.status, 2, 'a wait on another session must time out, not steal the report');
+
+  const own = runJson(home, ['wait', '--json', '--timeout', '5', '--session', 'swarm-a']);
+  assert.equal(own.body, 'A finished');
+
+  // Task listings are scoped the same way.
+  assert.equal(runJson(home, ['task', 'list', '--json', '--session', 'swarm-b']).length, 0);
+  assert.equal(runJson(home, ['task', 'list', '--json', '--session', 'swarm-a']).length, 1);
+});
+
+test('wait escalates instead of blocking when the assigned worker is dead', (t) => {
+  const home = makeHome(t);
+  const id = addTask(home);
+  fakeDispatch(home, 'w1', id); // pane %9999 does not exist anywhere
+
+  // Without the watchdog this would sit out the full timeout on a report that
+  // can never come; with it, the same wait returns the diagnosis.
+  const msg = runJson(home, ['wait', '--json', '--timeout', '10']);
+  assert.equal(msg.type, 'escalation');
+  assert.equal(msg.task_id, id);
+  assert.equal(msg.from_worker, 'w1');
+  assert.equal(taskById(home, id).status, 'failed');
+});
+
+test('kill fails the dispatched task of the worker it removes', (t) => {
+  const home = makeHome(t);
+  const id = addTask(home);
+  fakeDispatch(home, 'w1', id);
+
+  const r = run(home, ['kill', '--name', 'w1']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /marked failed/);
+  assert.equal(
+    taskById(home, id).status,
+    'failed',
+    'killing a worker mid-task must not leave the task looking in flight',
+  );
+});
+
+test('down fails the dispatched tasks of the workers it tears down', (t) => {
+  const home = makeHome(t);
+  const id = addTask(home);
+  fakeDispatch(home, 'w1', id);
+
+  const r = run(home, ['down']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(taskById(home, id).status, 'failed');
+  assert.equal(runJson(home, ['ps', '--json']).workers.length, 0);
+});
+
+test('everything after -- is positional, never an orchestmux flag', (t) => {
+  const home = makeHome(t);
+  const id = run(home, ['task', 'add', '--', '--not-a-flag', 'spec words']).stdout.trim();
+  assert.match(id, /^t_[0-9a-f]{8}$/);
+  assert.equal(
+    taskById(home, id).spec,
+    '--not-a-flag spec words',
+    'agent-bound flags must survive the parser instead of being eaten as options',
+  );
+});
+
+test('a numeric flag that does not parse fails loudly instead of using the default', (t) => {
+  const home = makeHome(t);
+  const r = run(home, ['wait', '--timeout', 'abc']);
+  assert.equal(r.status, 1, 'silently waiting 900s the caller never asked for is not an option');
+  assert.match(r.stderr, /--timeout expects a number/);
+});
+
+test('task clear removes finished tasks and their messages, keeping live ones', (t) => {
+  const home = makeHome(t);
+  const finished = addTask(home, 'will finish');
+  const pending = addTask(home, 'still open');
+  run(home, ['done', '--task', finished, '--from', 'w1', '--body', 'done and dusted']);
+
+  const r = run(home, ['task', 'clear']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /cleared 1 finished task/);
+
+  const remaining = runJson(home, ['task', 'list', '--json']);
+  assert.deepEqual(remaining.map((task) => task.id), [pending]);
+  assert.equal(runJson(home, ['report', '--json']).length, 0, 'cleared tasks take their reports with them');
+});

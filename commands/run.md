@@ -92,6 +92,10 @@ orchestmux wait --types done,ask,escalation --timeout 900
   `tmux capture-pane -p -t <pane>` rather than killing the worker.
 - An `ask` blocks that worker until you answer:
   `orchestmux reply --id <msg> --body "<decision>"`, then keep waiting.
+- An `escalation` means the worker's pane died mid-task; the task is already
+  marked `failed`. Check `tmux capture-pane -p -t <pane>` for the cause, then
+  re-dispatch to a fresh worker or report the failure — do not wait further
+  for that task.
 
 ## 5. Report
 

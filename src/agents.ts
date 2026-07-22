@@ -16,8 +16,6 @@ export interface AgentSpec {
    * unsent. Launch arguments have none of those failure modes.
    */
   prompt: PromptMode;
-  /** True when --prompt runs the task once and exits instead of staying up. */
-  headless?: boolean;
   /** Agent blocks on a per-directory trust prompt that --yolo does not cover. */
   preflightTrust?: 'codex';
 }
@@ -34,13 +32,14 @@ export const AGENTS: Record<string, AgentSpec> = {
     prompt: { kind: 'positional' },
     preflightTrust: 'codex',
   },
-  kimi: { cmd: 'kimi', autonomousArgs: [], prompt: { kind: 'flag', flag: '-p' }, headless: true },
+  // kimi and gemini run the prompt once and exit; their panes survive that
+  // (remain-on-exit) and dispatch revives them, so they are reusable workers.
+  kimi: { cmd: 'kimi', autonomousArgs: [], prompt: { kind: 'flag', flag: '-p' } },
   opencode: { cmd: 'opencode', autonomousArgs: [], prompt: { kind: 'flag', flag: '--prompt' } },
   gemini: {
     cmd: 'gemini',
     autonomousArgs: ['--yolo'],
     prompt: { kind: 'flag', flag: '-p' },
-    headless: true,
   },
   shell: {
     cmd: process.env.SHELL || 'bash',
@@ -54,8 +53,11 @@ export function agentNames(): string[] {
 }
 
 export function isInstalled(cmd: string): boolean {
+  // The name rides in as a positional argument, so no quoting layer to get
+  // wrong — and no `-l`: sourcing the login profile per check is slow and
+  // does not reflect the non-login `sh -c` a worker pane actually runs under.
   try {
-    execFileSync('sh', ['-lc', `command -v ${JSON.stringify(cmd)}`], { stdio: 'ignore' });
+    execFileSync('sh', ['-c', 'command -v -- "$1"', 'sh', cmd], { stdio: 'ignore' });
     return true;
   } catch {
     return false;
