@@ -58,8 +58,13 @@ export function openDb(): DatabaseSync {
   mkdirSync(STATE_DIR, { recursive: true });
   const db = new DatabaseSync(join(STATE_DIR, 'state.db'));
   // WAL + a generous busy timeout: several agent panes may call `done` at once.
-  db.exec('PRAGMA journal_mode = WAL');
+  //
+  // busy_timeout has to be set FIRST. Switching journal modes takes a lock of
+  // its own, so with the timeout still at 0 an openDb() racing a live writer
+  // fails instantly with SQLITE_BUSY — and a worker whose `done` dies that way
+  // leaves the coordinator waiting on a report that will never come.
   db.exec('PRAGMA busy_timeout = 5000');
+  db.exec('PRAGMA journal_mode = WAL');
   db.exec(`
     CREATE TABLE IF NOT EXISTS workers (
       name       TEXT PRIMARY KEY,

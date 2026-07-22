@@ -222,6 +222,32 @@ test('report is honest when there is nothing to show', (t) => {
   assert.match(missing.stderr, /no such task/);
 });
 
+test('concurrent workers can all report at once', async (t) => {
+  const home = makeHome(t);
+  const ids = Array.from({ length: 8 }, (_, i) => addTask(home, `parallel task ${i}`));
+
+  // The real shape of this tool: a swarm finishing together, every pane
+  // opening the same database at the same moment. Serialised writes are fine;
+  // what is not fine is one of them failing outright, because a `done` that
+  // dies takes the report with it and the coordinator waits forever.
+  const results = await Promise.all(
+    ids.map((id, i) =>
+      runAsync(home, ['done', '--task', id, '--from', `w${i}`, '--body', `report ${i}`]).done,
+    ),
+  );
+
+  results.forEach((r, i) => {
+    assert.equal(r.status, 0, `worker ${i} failed to report: ${r.stderr}`);
+  });
+
+  const collected = runJson(home, ['wait', '--all', '--json', '--timeout', '10']);
+  assert.equal(collected.length, ids.length, 'every concurrent report must survive');
+  assert.equal(
+    runJson(home, ['task', 'list', '--json']).filter((task) => task.status === 'done').length,
+    ids.length,
+  );
+});
+
 test('wait --types ignores report kinds the coordinator did not ask for', (t) => {
   const home = makeHome(t);
   const id = addTask(home);
