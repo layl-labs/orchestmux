@@ -13,7 +13,6 @@ import {
   listTasks,
   STATE_DIR,
   type Message,
-  type MessageType,
 } from './db.js';
 import {
   tmuxAvailable,
@@ -290,18 +289,33 @@ function cmdDispatch(db: DatabaseSync, args: Args): void {
   // any of them.
   const prompt = dispatchPrompt({ taskId, spec: task.spec, cli: cliInvocation() });
   const command = buildCommand(worker.agent, worker.autonomous === 1, [], prompt);
-  respawnPane({
-    paneId: worker.pane_id,
-    cwd: worker.cwd,
-    env: workerEnv(to, worker.session),
-    command,
-  });
 
+  // Claim the task before the pane can possibly report on it. A headless agent
+  // that finishes immediately would otherwise have its `done` overwritten by
+  // this update landing afterwards.
   db.prepare(`UPDATE tasks SET status = 'dispatched', assignee = ?, updated_at = ? WHERE id = ?`).run(
     to,
     now(),
     taskId,
   );
+  try {
+    respawnPane({
+      paneId: worker.pane_id,
+      cwd: worker.cwd,
+      env: workerEnv(to, worker.session),
+      command,
+    });
+  } catch (err) {
+    // The claim was a lie if the pane never came back — undo it rather than
+    // leave a task that looks dispatched to a worker that never got it.
+    db.prepare('UPDATE tasks SET status = ?, assignee = ?, updated_at = ? WHERE id = ?').run(
+      task.status,
+      task.assignee,
+      now(),
+      taskId,
+    );
+    throw err;
+  }
   console.log(`dispatched ${taskId} -> ${to}`);
 }
 
@@ -348,7 +362,17 @@ function cmdDone(db: DatabaseSync, args: Args): void {
   const taskId = need(args, 'task');
   const body = need(args, 'body');
   const from = whoami(args);
-  if (!getTask(db, taskId)) fail(`no such task: ${taskId}`);
+  const task = getTask(db, taskId) ?? fail(`no such task: ${taskId}`);
+
+  // Agents mistype ids, and with several workers running that lands a report
+  // on someone else's task — closing work that is still in flight. An
+  // unassigned task stays open to anyone, so finishing one by hand still works.
+  if (task.assignee && task.assignee !== from && !bool(args, 'force', false)) {
+    fail(
+      `${taskId} is assigned to "${task.assignee}", not "${from}". ` +
+        `Check the task id in your prompt, or pass --force to report anyway.`,
+    );
+  }
 
   const status = bool(args, 'failed', false) ? 'failed' : 'done';
   insertMessage(db, {
@@ -416,22 +440,6 @@ function cmdReply(db: DatabaseSync, args: Args): void {
     reply_to: id,
   });
   console.log(`replied to ${id}`);
-}
-
-function cmdSend(db: DatabaseSync, args: Args): void {
-  const to = need(args, 'to');
-  const body = need(args, 'body');
-  if (!getWorker(db, to)) fail(`no such worker: ${to}`);
-  insertMessage(db, {
-    type: (str(args, 'type') as MessageType) ?? 'status',
-    task_id: str(args, 'task') ?? null,
-    from_worker: str(args, 'from') ?? process.env.ORCHESTMUX_WORKER ?? null,
-    to_worker: to,
-    subject: str(args, 'subject') ?? null,
-    body,
-    reply_to: null,
-  });
-  console.log(`sent to ${to}`);
 }
 
 function cmdPs(db: DatabaseSync, args: Args): void {
@@ -619,7 +627,6 @@ const HELP = `orchestmux — multi-agent orchestration for coding CLIs in tmux
   dispatch --task <id> --to <w>             inject the task + protocol into a worker
   wait [--types done,ask] [--timeout 900]   block until a worker reports (exit 2 on timeout)
   reply --id <msg> --body "<answer>"        answer a worker's ask
-  send --to <w> --body "<text>"             message a worker
   ps [--json]                               workers, tasks, unread count
   attach | watch                            attach to the session | open a terminal attached to it
   sweep [--dry-run]                         remove workers with nothing left to do
@@ -667,8 +674,6 @@ function main(): void {
       return cmdAsk(db, args);
     case 'reply':
       return cmdReply(db, args);
-    case 'send':
-      return cmdSend(db, args);
     case 'ps':
       return cmdPs(db, args);
     case 'sweep':

@@ -147,7 +147,6 @@ check a claim. Sweep once the user has the results, or when they ask.
 | `dispatch --task <id> --to <w>` | Send task + protocol to a worker |
 | `wait [--types done,ask] [--timeout <s>]` | Block for the next report |
 | `reply --id <msg> --body "<answer>"` | Answer a worker's `ask` |
-| `send --to <w> --body "<text>"` | Free-form message to a worker |
 | `ps [--json]` | Workers, tasks, unread count |
 | `attach` | Attach to the tmux session (for the user) |
 | `kill --name <w>` / `down` | Remove one worker / tear down |

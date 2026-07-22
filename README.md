@@ -175,7 +175,6 @@ orchestmux reply --id m_9f8e7d6c --body "Use the v2 endpoint."
 | `dispatch --task <id> --to <w>` | Inject task + protocol into a worker |
 | `wait [--types done,ask] [--timeout 900]` | Block until a worker reports |
 | `reply --id <msg> --body "<answer>"` | Answer a worker's `ask` |
-| `send --to <w> --body "<text>"` | Message a worker |
 | `ps [--json]` | Workers, tasks, unread count |
 | `attach` | Attach to the tmux session |
 | `watch` | Open a terminal already attached to the session |
@@ -209,7 +208,16 @@ until orchestmux wait --timeout 600; do echo "still working…"; done
 `--dangerously-bypass-approvals-and-sandbox` for Codex, `--yolo` for Gemini).
 It is **off by default** — an agent that stops for approval will stall the
 coordinator, but granting unattended write access is your call to make
-explicitly. Extra arguments after the flags are passed to the agent:
+explicitly.
+
+> **`--yolo` with codex also edits your codex config.** Codex blocks on a
+> per-directory trust prompt that no flag can answer, so spawning a codex
+> worker with `--yolo` adds the working directory to the trusted list in
+> `~/.codex/config.toml`. Without it the worker would sit on that prompt and
+> never read its task. It is announced when it happens, and nothing else in
+> orchestmux writes outside its own state directory.
+
+Extra arguments after the flags are passed to the agent:
 
 ```bash
 orchestmux spawn --name w1 --agent codex --yolo -- --model gpt-5.5

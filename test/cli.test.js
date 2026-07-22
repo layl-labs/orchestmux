@@ -62,6 +62,39 @@ test('done moves the task to done and stores the report as its result', (t) => {
   assert.equal(task.result, 'found two leaks');
 });
 
+test('a report from anyone but the assignee is refused', (t) => {
+  const home = makeHome(t);
+  const id = addTask(home);
+  fakeDispatch(home, 'w1', id);
+
+  // The realistic failure: with several workers running, an agent retypes the
+  // wrong id and closes work that is still in flight.
+  const wrong = run(home, ['done', '--task', id, '--from', 'w2', '--body', 'not mine to close']);
+  assert.equal(wrong.status, 1);
+  assert.match(wrong.stderr, /assigned to "w1", not "w2"/);
+  assert.equal(taskById(home, id).status, 'dispatched');
+
+  const right = run(home, ['done', '--task', id, '--from', 'w1', '--body', 'mine']);
+  assert.equal(right.status, 0, right.stderr);
+  assert.equal(taskById(home, id).status, 'done');
+});
+
+test('--force lets a report through, and unassigned tasks stay open to anyone', (t) => {
+  const home = makeHome(t);
+
+  const assigned = addTask(home, 'assigned');
+  fakeDispatch(home, 'w1', assigned);
+  const forced = run(home, ['done', '--task', assigned, '--from', 'w2', '--force', '--body', 'took over']);
+  assert.equal(forced.status, 0, forced.stderr);
+  assert.equal(taskById(home, assigned).status, 'done');
+
+  // Nobody has claimed this one, so finishing it by hand must still work.
+  const loose = addTask(home, 'never dispatched');
+  const byHand = run(home, ['done', '--task', loose, '--from', 'me', '--body', 'closed manually']);
+  assert.equal(byHand.status, 0, byHand.stderr);
+  assert.equal(taskById(home, loose).status, 'done');
+});
+
 test('done --failed records failure without losing the report', (t) => {
   const home = makeHome(t);
   const id = addTask(home);
