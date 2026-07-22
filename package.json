@@ -16,11 +16,11 @@
   "author": "Youngha Kim",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/younghotkim/orchestmux.git"
+    "url": "git+https://github.com/layl-labs/orchestmux.git"
   },
-  "homepage": "https://github.com/younghotkim/orchestmux#readme",
+  "homepage": "https://github.com/layl-labs/orchestmux#readme",
   "bugs": {
-    "url": "https://github.com/younghotkim/orchestmux/issues"
+    "url": "https://github.com/layl-labs/orchestmux/issues"
   },
   "type": "module",
   "bin": {

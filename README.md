@@ -2,7 +2,7 @@
 
 [English](README.md) · [한국어](README.ko.md)
 
-[![CI](https://github.com/younghotkim/orchestmux/actions/workflows/ci.yml/badge.svg)](https://github.com/younghotkim/orchestmux/actions/workflows/ci.yml)
+[![CI](https://github.com/layl-labs/orchestmux/actions/workflows/ci.yml/badge.svg)](https://github.com/layl-labs/orchestmux/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/orchestmux.svg)](https://www.npmjs.com/package/orchestmux)
 
 **A lightweight, tmux-based multi-agent tool.** Tell Claude Code what you want
@@ -10,7 +10,7 @@ in plain language, and it runs Codex, Kimi, Gemini, OpenCode — every coding
 CLI you're already subscribed to — in parallel, as real terminal panes you can
 watch and take over.
 
-![orchestmux driven from Claude Code](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo-claude.gif)
+![orchestmux driven from Claude Code](https://raw.githubusercontent.com/layl-labs/orchestmux/main/docs/demo-claude.gif)
 
 *A real session: one plain-language request — Claude spawns codex and opencode
 as tmux panes, blocks until both report back, chases down a disagreement, and
@@ -62,7 +62,7 @@ thing. The slash command is just for discoverability.
 If you use Claude Code, take the plugin — it installs the CLI for you:
 
 ```
-/plugin marketplace add younghotkim/orchestmux
+/plugin marketplace add layl-labs/orchestmux
 /plugin install orchestmux@orchestmux
 ```
 
@@ -115,7 +115,7 @@ saying so.
 
 Everything above is Claude driving a small CLI. You can script it yourself:
 
-![the orchestmux CLI driven by hand](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo.gif)
+![the orchestmux CLI driven by hand](https://raw.githubusercontent.com/layl-labs/orchestmux/main/docs/demo.gif)
 
 *The CLI driven by hand — normally Claude types these for you. One task
 dispatched to codex and opencode, both reports collected.*

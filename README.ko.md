@@ -2,7 +2,7 @@
 
 [English](README.md) · [한국어](README.ko.md)
 
-[![CI](https://github.com/younghotkim/orchestmux/actions/workflows/ci.yml/badge.svg)](https://github.com/younghotkim/orchestmux/actions/workflows/ci.yml)
+[![CI](https://github.com/layl-labs/orchestmux/actions/workflows/ci.yml/badge.svg)](https://github.com/layl-labs/orchestmux/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/orchestmux.svg)](https://www.npmjs.com/package/orchestmux)
 
 **경량 tmux 기반 멀티 에이전트 도구입니다.** Claude Code에 평소 쓰는 말로
@@ -10,7 +10,7 @@
 병렬로 굴려 줍니다. 워커는 전부 눈으로 보고 직접 개입할 수 있는 진짜 터미널
 pane입니다.
 
-![Claude Code에서 orchestmux를 구동하는 모습](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo-claude.gif)
+![Claude Code에서 orchestmux를 구동하는 모습](https://raw.githubusercontent.com/layl-labs/orchestmux/main/docs/demo-claude.gif)
 
 *실제 세션입니다: 평소 말로 한 줄 지시하면 — Claude가 codex와 opencode를
 tmux pane으로 띄우고, 둘 다 보고할 때까지 기다렸다가, 이견은 파고들어 확인한
@@ -62,7 +62,7 @@ Claude Code에 한 줄만 입력하면 됩니다.
 Claude Code를 쓴다면 플러그인이 가장 쉽습니다. CLI까지 대신 설치해 줍니다.
 
 ```
-/plugin marketplace add younghotkim/orchestmux
+/plugin marketplace add layl-labs/orchestmux
 /plugin install orchestmux@orchestmux
 ```
 
@@ -114,7 +114,7 @@ CLI 1개 이상.
 위의 모든 동작은 Claude가 작은 CLI를 조작하는 것입니다. 직접 스크립트로 쓸
 수도 있습니다.
 
-![orchestmux CLI를 직접 조작하는 모습](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo.gif)
+![orchestmux CLI를 직접 조작하는 모습](https://raw.githubusercontent.com/layl-labs/orchestmux/main/docs/demo.gif)
 
 *CLI를 손으로 직접 조작하는 화면입니다 — 평소에는 이 명령들을 Claude가 대신
 입력합니다. 하나의 작업을 codex와 opencode에 보내고 두 보고를 수거하는 모습.*
