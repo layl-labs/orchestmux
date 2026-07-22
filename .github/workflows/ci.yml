@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22.13 is the floor: node:sqlite is flagged off before it. 24 is what
+        # most people will actually run this on.
+        node: ['22.13.0', '24']
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # The CLI shells out to tmux before it will run any command.
+      - name: Install tmux
+        run: ${{ runner.os == 'macOS' && 'brew install tmux' || 'sudo apt-get update && sudo apt-get install -y tmux' }}
+      - run: npm ci
+      - run: npm test

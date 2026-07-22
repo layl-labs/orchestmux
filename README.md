@@ -2,6 +2,9 @@
 
 [English](README.md) · [한국어](README.ko.md)
 
+[![CI](https://github.com/younghotkim/orchestmux/actions/workflows/ci.yml/badge.svg)](https://github.com/younghotkim/orchestmux/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/orchestmux.svg)](https://www.npmjs.com/package/orchestmux)
+
 Running coding agents in parallel is easy. Knowing when they are *done* is not.
 
 `orchestmux` dispatches tasks to Claude Code, Codex, Kimi, OpenCode, or Gemini
@@ -35,7 +38,8 @@ without restarting the task.
 
 - **tmux** — workers are tmux panes; there is no fallback. macOS, Linux, or WSL.
   Native Windows is not supported.
-- **Node >= 22.5** — the CLI uses the built-in `node:sqlite` module.
+- **Node >= 22.13** — the CLI uses the built-in `node:sqlite` module, which is
+  only available unflagged from 22.13 (or 23.4) onwards.
 - **At least one agent CLI**, installed and logged in. orchestmux provides no
   model access of its own: every worker runs on that machine's own
   subscriptions, so each person uses their own Claude/ChatGPT/Kimi plan and

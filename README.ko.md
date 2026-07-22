@@ -2,6 +2,9 @@
 
 [English](README.md) · [한국어](README.ko.md)
 
+[![CI](https://github.com/younghotkim/orchestmux/actions/workflows/ci.yml/badge.svg)](https://github.com/younghotkim/orchestmux/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/orchestmux.svg)](https://www.npmjs.com/package/orchestmux)
+
 **에이전트를 여러 개 띄우는 건 쉽습니다. 어려운 건 언제 끝났는지 아는 일입니다.**
 
 `orchestmux`는 Claude Code, Codex, Kimi, OpenCode, Gemini 워커에 작업을 배정하고,
@@ -40,7 +43,7 @@ orchestmux는 이걸 뒤집습니다. 배정되는 모든 작업에 **보고 프
 | 항목 | 내용 |
 | --- | --- |
 | **tmux** | 워커가 tmux pane이므로 필수입니다. macOS · Linux · WSL에서 동작하며, **네이티브 Windows는 지원하지 않습니다.** |
-| **Node 22.5 이상** | 내장 `node:sqlite` 모듈을 사용합니다. |
+| **Node 22.13 이상** | 내장 `node:sqlite` 모듈을 사용합니다. 22.13(또는 23.4) 미만에서는 이 모듈이 플래그 뒤에 있어 실행되지 않습니다. |
 | **에이전트 CLI 1개 이상** | 설치 및 로그인이 되어 있어야 합니다. |
 
 > **비용에 관하여**
