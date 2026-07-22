@@ -83,6 +83,10 @@ orchestmux wait --types done,ask,escalation --timeout 900
 ```
 
 - One `wait` returns one message — loop once per outstanding worker.
+- For an **ensemble**, hold for the whole set instead:
+  `orchestmux wait --count <n> --timeout 1800`. Reacting to whichever agent
+  finished first is exactly what you are trying to avoid when comparing. If the
+  timeout hits first it still prints the reports that did arrive, and exits 2.
 - Exit code 2 is a **timeout, not a failure**. Coding tasks routinely run
   15-60 minutes. Keep waiting; check liveness with `orchestmux ps` and
   `tmux capture-pane -p -t <pane>` rather than killing the worker.
@@ -92,7 +96,9 @@ orchestmux wait --types done,ask,escalation --timeout 900
 ## 5. Report
 
 Read each `done` body and verify anything load-bearing yourself — the worker
-may be wrong. Then summarise in the user's language, saying which worker did
+may be wrong. `wait` consumes each report once, so use `orchestmux report`
+(optionally `--task <id>`) to read them again while you write the synthesis, or
+after the panes are gone. Then summarise in the user's language, saying which worker did
 what. If a worker failed or went silent, say so plainly instead of quietly
 redoing its work.
 
