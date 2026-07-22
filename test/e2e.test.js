@@ -143,7 +143,10 @@ test('dispatch relaunches the pane and the report comes back through the protoco
     worker = paneOf(home, session, 'w1');
   }
   assert.equal(worker.alive, false, 'the finished agent should no longer be running');
-  const scrollback = tmux(['capture-pane', '-p', '-t', worker.pane_id]);
+  // -S -/-E -: the whole history, not just the visible screen — drawing the
+  // "Pane is dead" banner can push the report line off the screen and into
+  // scrollback, which is exactly where this claim says it must survive.
+  const scrollback = tmux(['capture-pane', '-p', '-t', worker.pane_id, '-S', '-', '-E', '-']);
   assert.equal(scrollback.status, 0, 'the pane itself must still exist after the agent exited');
   assert.match(scrollback.stdout, /reported done for/, 'the evidence of the report must survive');
 });
