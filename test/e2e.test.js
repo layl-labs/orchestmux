@@ -92,6 +92,9 @@ test('dispatch relaunches the pane and the report comes back through the protoco
   // A stand-in agent: launched bare (spawn) it stays up like a shell; launched
   // with a prompt (dispatch) it reads the task id out of the preamble and
   // reports through the same protocol a real agent is instructed to use.
+  // The sleep is load-bearing: tmux drains the pty asynchronously, and a
+  // process that exits right after its last write can take that output with
+  // it — which is a flake here, not the scenario under test.
   const agent = join(home, 'fake-agent.sh');
   writeFileSync(
     agent,
@@ -99,7 +102,8 @@ test('dispatch relaunches the pane and the report comes back through the protoco
       '#!/bin/sh',
       '[ -z "$1" ] && exec sh',
       `id=$(printf '%s' "$1" | sed -n 's/^\\[ORCHESTMUX TASK \\(t_[0-9a-f]*\\)\\]$/\\1/p')`,
-      `exec ${process.execPath} ${CLI} done --task "$id" --body "fake agent finished"`,
+      `${process.execPath} ${CLI} done --task "$id" --body "fake agent finished"`,
+      'sleep 2',
       '',
     ].join('\n'),
     { mode: 0o755 },
@@ -131,7 +135,13 @@ test('dispatch relaunches the pane and the report comes back through the protoco
 
   // The agent process has exited, but the pane must survive it: the
   // scrollback is the only record of how the worker reached its answer.
-  const worker = paneOf(home, session, 'w1');
+  // (The report lands before the agent exits, so wait can return while it is
+  // still winding down — poll the exit rather than assuming it.)
+  let worker = paneOf(home, session, 'w1');
+  for (let i = 0; i < 100 && worker.alive; i++) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+    worker = paneOf(home, session, 'w1');
+  }
   assert.equal(worker.alive, false, 'the finished agent should no longer be running');
   const scrollback = tmux(['capture-pane', '-p', '-t', worker.pane_id]);
   assert.equal(scrollback.status, 0, 'the pane itself must still exist after the agent exited');
