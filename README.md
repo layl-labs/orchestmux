@@ -228,6 +228,29 @@ but note that a bare shell **executes** the pasted preamble line by line — do
 not `dispatch` to it and expect agent-like behaviour. Call `done` yourself
 instead.
 
+## Two shapes of parallel work
+
+**Ensemble** — give the same task to several agents at once and compare what
+comes back. Worth the extra tokens when judgement actually differs between
+models: design proposals, review, "what is wrong with this code".
+
+```bash
+SPEC="Propose improvements to packages/api, citing the code"
+for a in codex kimi; do
+  orchestmux spawn --name w_$a --agent $a --yolo
+  orchestmux dispatch --task "$(orchestmux task add "$SPEC")" --to w_$a
+done
+for i in 1 2; do orchestmux wait --timeout 1800; done
+```
+
+Do not concatenate the reports. **Where the agents agree** is the strongest
+signal and belongs first; **where they disagree**, go read the code and say
+which one was right; **what only one of them found** goes in after you have
+checked it. That synthesis is deliberately yours — see [Scope](#scope).
+
+**Split** — hand each worker an independent piece. Right when the work
+decomposes cleanly and the pieces do not touch each other.
+
 ## Use it from Claude Code
 
 `orchestmux` ships as a Claude Code plugin: a skill that teaches an agent to
@@ -276,9 +299,24 @@ independent swarms can run side by side.
 
 ## Scope
 
-This is the core loop — spawn, dispatch, wait, report, ask. Task dependency
-graphs, decision gates, and coordinator auto-loops are deliberately left out
-until the core proves itself in daily use.
+This is the core loop — spawn, dispatch, wait, report, ask. Left out on
+purpose, not missing:
+
+- **Judging or merging what workers report.** No consensus, no best-of-N, no
+  auto-review of one agent's diff by another.
+- **Worktree isolation and merge.** Workers share the directory you point them
+  at; keeping their edits apart is your call.
+- **Task dependency graphs, decision gates, coordinator auto-loops.**
+- **Retry, cost, and timeout policy.**
+
+The first one is the load-bearing decision. This tool's whole claim is that
+completion is a *recorded fact* rather than something inferred from terminal
+output — and "which of these two answers is better" is exactly the kind of
+inference it refuses to make on your behalf. Your coordinator is usually an
+agent that is far better at that judgement than any rule this could ship, so
+orchestmux gets the reports to it intact and stops there.
+
+The rest is held back until the core proves itself in daily use.
 
 ## License
 
