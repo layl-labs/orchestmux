@@ -10,6 +10,12 @@ in plain language, and it runs Codex, Kimi, Gemini, OpenCode — every coding
 CLI you're already subscribed to — in parallel, as real terminal panes you can
 watch and take over.
 
+![orchestmux driven from Claude Code](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo-claude.gif)
+
+*A real session: one plain-language request — Claude spawns codex and opencode
+as tmux panes, blocks until both report back, chases down a disagreement, and
+hands back one answer, ready for the next instruction.*
+
 ## What it does
 
 You type one line into Claude Code:

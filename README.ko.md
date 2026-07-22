@@ -10,6 +10,12 @@
 병렬로 굴려 줍니다. 워커는 전부 눈으로 보고 직접 개입할 수 있는 진짜 터미널
 pane입니다.
 
+![Claude Code에서 orchestmux를 구동하는 모습](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo-claude.gif)
+
+*실제 세션입니다: 평소 말로 한 줄 지시하면 — Claude가 codex와 opencode를
+tmux pane으로 띄우고, 둘 다 보고할 때까지 기다렸다가, 이견은 파고들어 확인한
+뒤, 하나의 답으로 정리해 다음 지시를 받을 준비까지 마칩니다.*
+
 ## 무엇을 해 주나요
 
 Claude Code에 한 줄만 입력하면 됩니다.
