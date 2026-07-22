@@ -2,11 +2,12 @@
 
 [English](README.md) · [한국어](README.ko.md)
 
-Multi-agent orchestration for coding CLIs, in tmux.
+Running coding agents in parallel is easy. Knowing when they are *done* is not.
 
-Spawn Claude Code, Codex, Kimi, OpenCode, or Gemini as workers in tmux panes,
-dispatch tasks to them, and block until they report back — all from one
-terminal, with no GUI and no daemon.
+`orchestmux` dispatches tasks to Claude Code, Codex, Kimi, OpenCode, or Gemini
+workers and blocks until they actually report back — no polling terminal output,
+no guessing. Workers are real tmux panes, so you can attach mid-task and take
+one over. One terminal, no GUI, no daemon.
 
 ![orchestmux demo](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo.gif)
 
@@ -14,10 +15,15 @@ terminal, with no GUI and no daemon.
 
 ## Why
 
-Running several coding agents in parallel is easy; knowing when they are *done*
-is not. `orchestmux` adds the missing piece: every dispatched task carries a
-reporting protocol, so the coordinator can block on real completion instead of
-polling terminal output and guessing.
+Polling is the usual answer: watch the pane, wait for the prompt to come back,
+call it done. It misreads an agent that paused for input, and it burns the
+coordinator's own context re-reading output that has not changed.
+
+orchestmux inverts that. Every dispatched task carries a reporting protocol, so
+completion is a recorded fact: `orchestmux wait` returns because the worker said
+it was done, not because a heuristic decided it looked done. The same channel
+runs backwards — a blocked worker can `ask`, and the coordinator can `reply`
+without restarting the task.
 
 - **Real panes.** Workers are tmux panes. Attach, scroll back, type into them,
   take over an agent mid-task. Nothing is hidden behind a viewer.
