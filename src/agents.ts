@@ -81,6 +81,7 @@ export function buildCommand(
   return [spec.cmd, ...args].map(quote).join(' ');
 }
 
-function quote(s: string): string {
+/** Shell-quotes an argument, leaving bare words alone for readability. */
+export function quote(s: string): string {
   return /^[\w./:=-]+$/.test(s) ? s : `'${s.replaceAll("'", `'\\''`)}'`;
 }

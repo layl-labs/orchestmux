@@ -1,18 +1,36 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { quote } from './agents.js';
+
+function defaultResolveBin(): string | null {
+  try {
+    const bin = execFileSync('sh', ['-c', 'command -v -- orchestmux'], {
+      encoding: 'utf8',
+    }).trim();
+    return bin || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
- * How a worker should invoke this CLI. Prefer the bare name so the injected
- * prompt stays readable, but fall back to an absolute path when the package
- * is not linked onto PATH — the agent has to be able to run it verbatim.
+ * How a worker should invoke this CLI. The worker retypes it verbatim into a
+ * non-login `sh` whose PATH is the tmux server's, not the coordinator's — so
+ * a bare `orchestmux` that resolves here may not resolve there. Embed the
+ * absolute paths instead, shell-quoted: an install under a directory with a
+ * space would otherwise render a `done` command that cannot run, and a worker
+ * that cannot report strands the coordinator forever.
+ *
+ * The lookups are injectable for tests.
  */
-export function cliInvocation(): string {
-  try {
-    execFileSync('sh', ['-lc', 'command -v orchestmux'], { stdio: 'ignore' });
-    return 'orchestmux';
-  } catch {
-    return `node ${fileURLToPath(new URL('./cli.js', import.meta.url))}`;
-  }
+export function cliInvocation(
+  resolveBin: () => string | null = defaultResolveBin,
+  nodePath: string = process.execPath,
+  scriptPath: string = fileURLToPath(new URL('./cli.js', import.meta.url)),
+): string {
+  const bin = resolveBin();
+  if (bin) return quote(bin);
+  return `${quote(nodePath)} ${quote(scriptPath)}`;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { dispatchPrompt } from '../dist/preamble.js';
+import { cliInvocation, dispatchPrompt } from '../dist/preamble.js';
 
 /**
  * The preamble is the whole protocol. If a worker cannot read a runnable
@@ -51,4 +51,22 @@ test('embeds a multi-line spec without breaking the header', () => {
   const p = dispatchPrompt({ ...OPTS, spec });
   assert.match(p, /line four/);
   assert.equal(p.split('\n')[0], '[ORCHESTMUX TASK t_abc123]');
+});
+
+test('cliInvocation embeds the resolved binary path, not the bare name', () => {
+  // The worker's PATH is the tmux server's, not the coordinator's — a shim
+  // dir visible here (nvm, npm prefix) may be missing there, and a worker
+  // that cannot run the callback strands the coordinator.
+  assert.equal(cliInvocation(() => '/home/u/.nvm/current/bin/orchestmux'), '/home/u/.nvm/current/bin/orchestmux');
+});
+
+test('cliInvocation shell-quotes paths so installs with spaces can still report', () => {
+  const quoted = cliInvocation(() => null, '/opt/node bins/node', '/home/u/Agent Tools/dist/cli.js');
+  assert.equal(quoted, `'/opt/node bins/node' '/home/u/Agent Tools/dist/cli.js'`);
+
+  const resolved = cliInvocation(() => '/home/u/Agent Tools/bin/orchestmux');
+  assert.equal(resolved, `'/home/u/Agent Tools/bin/orchestmux'`);
+
+  // Boring paths stay bare, so the prompt the agent reads stays readable.
+  assert.equal(cliInvocation(() => null, '/usr/bin/node', '/opt/orchestmux/dist/cli.js'), '/usr/bin/node /opt/orchestmux/dist/cli.js');
 });
