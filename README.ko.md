@@ -18,25 +18,7 @@
 
 ---
 
-## 왜 만들었나요
-
-보통은 폴링으로 해결합니다. pane을 지켜보다가 프롬프트가 돌아오면 끝난 걸로
-칩니다. 하지만 입력을 기다리며 멈춰 선 에이전트를 완료로 오독하고, 바뀌지도 않은
-출력을 계속 다시 읽느라 코디네이터 자신의 컨텍스트를 태웁니다.
-
-orchestmux는 이걸 뒤집습니다. 배정되는 모든 작업에 **보고 프로토콜**이 함께
-주입되므로, 완료는 추론이 아니라 **기록된 사실**입니다. `orchestmux wait`이
-풀리는 이유는 휴리스틱이 끝난 것 같다고 판단해서가 아니라, 워커가 끝났다고
-말했기 때문입니다. 이 채널은 역방향으로도 흐릅니다 — 막힌 워커는 `ask`할 수 있고,
-코디네이터는 작업을 처음부터 다시 시키지 않고 `reply`로 답합니다.
-
-- **진짜 pane입니다.** 워커는 tmux pane이므로 스크롤백을 뒤지고, 직접 타이핑하고,
-  작업 중인 에이전트를 중간에 넘겨받을 수 있습니다. 뷰어 뒤에 숨겨져 있지 않습니다.
-- **어떤 CLI 에이전트든 됩니다.** 터미널에서 돌아가면 워커가 될 수 있습니다.
-- **런타임 의존성이 없습니다.** 상태는 Node 내장 `node:sqlite`에 저장합니다.
-  네이티브 빌드도, 백그라운드 서비스도 필요 없습니다.
-
----
+**[어떻게 돌아가나](#실제로는-이렇게-씁니다)** · [설치](#설치) · [왜 만들었나](#왜-만들었나요) · [명령어](#명령어) · [슬래시 커맨드](#슬래시-커맨드) · [에이전트](#에이전트) · [범위](#범위)
 
 ## 실제로는 이렇게 씁니다
 
@@ -68,7 +50,7 @@ orchestmux는 이걸 뒤집습니다. 배정되는 모든 작업에 **보고 프
 결과로는 각 에이전트의 좋은 부분만 합쳐진 **하나의 답**을 받게 되고, 눈에 띄는
 발견에는 누가 찾았는지가 함께 적힙니다.
 
-이 흐름에서 두 가지만 알아 두시면 됩니다.
+이 흐름에서 두 가지만 알아 두면 됩니다.
 
 - **비교와 판단은 이 도구가 아니라 Claude가 합니다.** orchestmux가 하는 일은 작업을
   넘기고, 돌아온 답을 기록하고, 그것을 코디네이터에게 온전히 전달하는 것까지입니다.
@@ -77,8 +59,69 @@ orchestmux는 이걸 뒤집습니다. 배정되는 모든 작업에 **보고 프
   스크롤을 올려 근거를 확인하거나, 직접 타이핑해서 중간에 넘겨받을 수 있습니다.
   들여다볼 수 없는 곳에서 벌어지는 일은 없습니다.
 
-이 아래 내용은 그 밑에서 도는 CLI입니다. 직접 스크립트를 짜실 게 아니라면
-플러그인이 알아서 호출하므로 읽지 않으셔도 됩니다.
+이 아래 내용은 그 밑에서 도는 CLI입니다. 직접 스크립트를 짤 게 아니라면
+플러그인이 알아서 호출하므로 안 읽어도 됩니다.
+
+---
+
+## 설치
+
+들어오는 길은 두 가지입니다. Claude Code를 쓴다면 첫 번째가 편합니다. CLI까지
+알아서 깔아 주거든요.
+
+**Claude Code 플러그인으로** (제일 쉬움)
+
+```
+/plugin marketplace add younghotkim/orchestmux
+/plugin install orchestmux@orchestmux
+```
+
+그다음 `/orchestmux:doctor`를 한 번 실행하면 됩니다. tmux와 Node, 설치돼 있는
+에이전트 CLI를 점검하고, orchestmux CLI가 없으면 대신 깔아 줍니다. 플러그인은
+스킬과 커맨드만 배포하고 바이너리는 배포하지 않아서 이 단계가 자동은 아닙니다.
+어쨌든 에디터 밖으로 나갈 일은 없습니다.
+
+**CLI만 따로**
+
+```bash
+npm install -g orchestmux
+```
+
+소스에서 받으려면:
+
+```bash
+git clone https://github.com/younghotkim/orchestmux && cd orchestmux
+npm install && npm run build && npm link
+```
+
+플러그인은 쓰기 싫은데 스킬만 필요하다면 직접 링크해도 됩니다.
+
+```bash
+ln -s "$(npm root -g)/orchestmux/skills/orchestmux" ~/.claude/skills/orchestmux
+```
+
+---
+
+## 왜 만들었나요
+
+보통은 폴링으로 해결합니다. pane을 지켜보다가 프롬프트가 돌아오면 끝난 걸로
+칩니다. 하지만 입력을 기다리며 멈춰 선 에이전트를 완료로 오독하고, 바뀌지도 않은
+출력을 계속 다시 읽느라 코디네이터 자신의 컨텍스트를 태웁니다.
+
+orchestmux는 이걸 뒤집습니다. 배정되는 모든 작업에 **보고 프로토콜**이 함께
+주입되므로, 완료는 추론이 아니라 **기록된 사실**입니다. `orchestmux wait`이
+풀리는 이유는 휴리스틱이 끝난 것 같다고 판단해서가 아니라, 워커가 끝났다고
+말했기 때문입니다. 이 채널은 역방향으로도 흐릅니다 — 막힌 워커는 `ask`할 수 있고,
+코디네이터는 작업을 처음부터 다시 시키지 않고 `reply`로 답합니다.
+
+- **새로 익힐 인터페이스가 없습니다.** 보드도, 대시보드도, 데몬도, 별도의 창 관리
+  체계도 없습니다. 이미 열려 있는 터미널에서 그대로 돌아가고, 달라지는 건 pane 몇
+  개가 스스로 보고하기 시작한다는 것뿐입니다.
+- **진짜 pane입니다.** 워커는 tmux pane이므로 스크롤백을 뒤지고, 직접 타이핑하고,
+  작업 중인 에이전트를 중간에 넘겨받을 수 있습니다. 뷰어 뒤에 숨겨져 있지 않습니다.
+- **어떤 CLI 에이전트든 됩니다.** 터미널에서 돌아가면 워커가 될 수 있습니다.
+- **런타임 의존성이 없습니다.** 상태는 Node 내장 `node:sqlite`에 저장합니다.
+  네이티브 빌드도, 백그라운드 서비스도 필요 없습니다.
 
 ---
 
@@ -97,28 +140,13 @@ orchestmux는 이걸 뒤집습니다. 배정되는 모든 작업에 **보고 프
 
 ---
 
-## 설치
-
-```bash
-npm install -g orchestmux
-```
-
-소스에서 설치하려면 다음과 같이 합니다.
-
-```bash
-git clone https://github.com/younghotkim/orchestmux && cd orchestmux
-npm install && npm run build && npm link
-```
-
----
-
 ## 빠른 시작
 
 ```bash
 orchestmux up                                        # tmux 세션 생성
 orchestmux spawn --name w1 --agent codex --yolo      # 워커 pane 추가
 
-TASK=$(orchestmux task add "packages/api에서 처리되지 않은 promise rejection을 감사해 주세요")
+TASK=$(orchestmux task add "packages/api에서 처리되지 않은 promise rejection을 감사해줘")
 orchestmux dispatch --task $TASK --to w1
 
 orchestmux wait --timeout 900                        # w1이 보고할 때까지 블로킹
@@ -143,7 +171,7 @@ for i in 1 2; do orchestmux wait --timeout 1800; done
 이때 창은 `$TMUX` 환경변수가 아니라 **프로세스 트리로 찾습니다.** 에이전트 하네스가
 도구를 실행할 때 환경변수를 걸러내는 경우가 많아, 환경변수만 믿으면 tmux 안에
 있으면서도 밖으로 오인되기 때문입니다. 전용 세션을 쓰고 싶다면 `--no-here`를
-지정하세요.
+지정하면 됩니다.
 
 ```bash
 orchestmux spawn --name w1 --agent codex --yolo
@@ -160,7 +188,7 @@ orchestmux spawn --name w2 --agent kimi  --yolo
 ```
 
 tmux 밖에서 호출한 경우 워커는 `orchestmux` 세션으로 들어가는데, 기본적으로는
-아무도 붙어 있지 않습니다. 이때는 `orchestmux watch`를 사용하시면 됩니다. 이미
+아무도 붙어 있지 않습니다. 이때는 `orchestmux watch`를 쓰면 됩니다. 이미
 attach된 터미널 창을 열어 줍니다(WSL은 Windows Terminal, macOS는 Terminal.app).
 
 ### pane은 왜 자동으로 닫히지 않나요
@@ -169,7 +197,7 @@ attach된 터미널 창을 열어 줍니다(WSL은 Windows Terminal, macOS는 Te
 
 스크롤백은 그 워커가 결론에 *어떻게* 도달했는지 남아 있는 유일한 기록이며,
 에이전트의 보고는 틀릴 수 있습니다. `done` 시점에 pane을 닫아 버리면 정작 그 보고를
-검증해야 할 때 근거가 사라집니다. 결과를 모두 확인하신 뒤 한 번에 정리하세요.
+검증해야 할 때 근거가 사라집니다. 결과를 모두 확인한 뒤 한 번에 정리하세요.
 
 ```bash
 orchestmux sweep --dry-run   # 무엇이 지워질지 미리 확인
@@ -260,11 +288,30 @@ dispatch를 더 해서 얻는 것이 아닙니다.
 
 **둘. `wait`의 타임아웃(exit `2`)은 실패가 아니라 체크포인트입니다.**
 실제 코딩 작업은 15~60분을 넘기는 일이 흔합니다. 오류로 처리하지 마시고 루프를
-돌리세요.
+돌리면 됩니다.
 
 ```bash
 until orchestmux wait --timeout 600; do echo "아직 작업 중입니다…"; done
 ```
+
+---
+
+## 슬래시 커맨드
+
+| 커맨드 | 용도 |
+| --- | --- |
+| `/orchestmux:doctor` | 사전 요구사항 점검 및 CLI 설치 제안 |
+| `/orchestmux:run <할 일>` | 워커 스폰 → 배정 → 대기 → 보고까지 한 번에 |
+| `/orchestmux:ps` | 워커·작업·미확인 보고 조회 |
+| `/orchestmux:down` | 워커 정리 |
+
+```
+/orchestmux:run packages/api의 처리되지 않은 promise rejection을 감사해줘
+/orchestmux:run 파서 테스트를 codex와 kimi에 나눠서 맡겨줘
+```
+
+평문으로 말해도 스킬이 반응합니다 — "codex랑 kimi 병렬로 X 해줘" 같은 식이죠.
+커맨드는 발견하기 쉬우라고 있는 것이지 필수는 아닙니다.
 
 ---
 
@@ -295,7 +342,7 @@ orchestmux spawn --name w1 --agent codex --yolo -- --model gpt-5.5
 
 > `shell`은 일반 셸입니다. 프로토콜을 손으로 시험해 볼 때 유용하지만, 맨 셸은
 > 전달된 preamble을 한 줄씩 실행해 버립니다. `dispatch` 대상으로 사용하면서
-> 에이전트와 같은 동작을 기대하지는 마세요.
+> 에이전트와 같은 동작을 기대하면 안 됩니다.
 
 ---
 
@@ -306,7 +353,7 @@ orchestmux spawn --name w1 --agent codex --yolo -- --model gpt-5.5
 모델별 판단이 실제로 갈리는 작업에 적합합니다.
 
 ```bash
-SPEC="qa-service 개선안을 코드 근거와 함께 제안해 주세요"
+SPEC="qa-service 개선안을 코드 근거와 함께 제안해줘"
 for a in codex kimi; do
   orchestmux spawn --name w_$a --agent $a --yolo
   orchestmux dispatch --task "$(orchestmux task add "$SPEC")" --to w_$a
@@ -325,48 +372,6 @@ orchestmux wait --count 2 --timeout 1800    # 둘 다 답할 때까지 붙잡습
 
 **분할(Split)** — 서로 독립적인 조각을 각 워커에 나누어 맡깁니다. 작업이 깔끔하게
 분해되고 서로 겹치지 않을 때 적합합니다.
-
----
-
-## Claude Code에서 사용하기
-
-orchestmux는 Claude Code 플러그인으로도 배포됩니다. 에이전트가 코디네이터 역할을
-수행하도록 가르치는 **스킬**과 **슬래시 커맨드**가 포함되어 있습니다.
-
-```bash
-npm i -g orchestmux
-```
-```
-/plugin marketplace add younghotkim/orchestmux
-/plugin install orchestmux@orchestmux
-```
-
-> **플러그인 설치가 CLI까지 설치해 주지는 않습니다.**
-> Claude Code 플러그인은 스킬과 커맨드를 배포할 뿐 바이너리를 배포하지 않습니다.
-> 새 머신에서는 `/orchestmux:doctor`를 먼저 실행해 주세요. tmux · Node · 에이전트
-> CLI를 점검하고, CLI가 없으면 `npm i -g orchestmux`를 대신 실행할지 물어보므로
-> 온보딩이 에디터 밖으로 나갈 일이 없습니다.
-
-| 커맨드 | 용도 |
-| --- | --- |
-| `/orchestmux:doctor` | 사전 요구사항 점검 및 CLI 설치 제안 |
-| `/orchestmux:run <할 일>` | 워커 스폰 → 배정 → 대기 → 보고까지 한 번에 |
-| `/orchestmux:ps` | 워커·작업·미확인 보고 조회 |
-| `/orchestmux:down` | 워커 정리 |
-
-```
-/orchestmux:run packages/api에서 처리되지 않은 promise rejection을 감사해 줘
-/orchestmux:run parser 테스트를 codex와 kimi로 나눠서 작성해 줘
-```
-
-스킬은 자연어에도 반응하므로("codex랑 kimi 병렬로 X 해줘"), 슬래시 커맨드는 필수가
-아니라 **발견성**을 위한 것입니다.
-
-플러그인 없이 스킬만 사용하고 싶다면 심링크로 연결하셔도 됩니다.
-
-```bash
-ln -s "$(npm root -g)/orchestmux/skills/orchestmux" ~/.claude/skills/orchestmux
-```
 
 ---
 

@@ -16,23 +16,7 @@ one over. One terminal, no GUI, no daemon.
 
 *Dispatching one task to codex and opencode, then collecting both reports.*
 
-## Why
-
-Polling is the usual answer: watch the pane, wait for the prompt to come back,
-call it done. It misreads an agent that paused for input, and it burns the
-coordinator's own context re-reading output that has not changed.
-
-orchestmux inverts that. Every dispatched task carries a reporting protocol, so
-completion is a recorded fact: `orchestmux wait` returns because the worker said
-it was done, not because a heuristic decided it looked done. The same channel
-runs backwards — a blocked worker can `ask`, and the coordinator can `reply`
-without restarting the task.
-
-- **Real panes.** Workers are tmux panes. Attach, scroll back, type into them,
-  take over an agent mid-task. Nothing is hidden behind a viewer.
-- **Any CLI agent.** If it runs in a terminal, it can be a worker.
-- **No runtime dependencies.** State lives in SQLite via Node's built-in
-  `node:sqlite`. No native builds, no background service.
+**[How it works](#what-it-looks-like-in-practice)** · [Install](#install) · [Why](#why) · [Commands](#commands) · [Slash commands](#slash-commands) · [Agents](#agents) · [Scope](#scope)
 
 ## What it looks like in practice
 
@@ -78,6 +62,63 @@ Two things worth knowing about that flow:
 The rest of this README is the CLI underneath. You need it if you are scripting
 this yourself; the plugin drives it for you otherwise.
 
+## Install
+
+Two ways in. If you use Claude Code, take the first one — it installs the CLI
+for you.
+
+**As a Claude Code plugin** (easiest)
+
+```
+/plugin marketplace add younghotkim/orchestmux
+/plugin install orchestmux@orchestmux
+```
+
+Then run `/orchestmux:doctor` once. It checks tmux, Node, and whichever agent
+CLIs you have, and offers to install the orchestmux CLI itself — plugins ship
+skills and commands, not binaries, so that part is not automatic. Onboarding
+never leaves the editor.
+
+**As a CLI on its own**
+
+```bash
+npm install -g orchestmux
+```
+
+From source:
+
+```bash
+git clone https://github.com/younghotkim/orchestmux && cd orchestmux
+npm install && npm run build && npm link
+```
+
+Want the skill without the plugin? Link it by hand:
+
+```bash
+ln -s "$(npm root -g)/orchestmux/skills/orchestmux" ~/.claude/skills/orchestmux
+```
+
+## Why
+
+Polling is the usual answer: watch the pane, wait for the prompt to come back,
+call it done. It misreads an agent that paused for input, and it burns the
+coordinator's own context re-reading output that has not changed.
+
+orchestmux inverts that. Every dispatched task carries a reporting protocol, so
+completion is a recorded fact: `orchestmux wait` returns because the worker said
+it was done, not because a heuristic decided it looked done. The same channel
+runs backwards — a blocked worker can `ask`, and the coordinator can `reply`
+without restarting the task.
+
+- **Nothing new to learn.** No board, no dashboard, no daemon, no window
+  manager of its own. It runs in the terminal you already have open, and the
+  only thing that changes is that a few panes now report for themselves.
+- **Real panes.** Workers are tmux panes. Attach, scroll back, type into them,
+  take over an agent mid-task. Nothing is hidden behind a viewer.
+- **Any CLI agent.** If it runs in a terminal, it can be a worker.
+- **No runtime dependencies.** State lives in SQLite via Node's built-in
+  `node:sqlite`. No native builds, no background service.
+
 ## Requirements
 
 - **tmux** — workers are tmux panes; there is no fallback. macOS, Linux, or WSL.
@@ -88,19 +129,6 @@ this yourself; the plugin drives it for you otherwise.
   model access of its own: every worker runs on that machine's own
   subscriptions, so each person uses their own Claude/ChatGPT/Kimi plan and
   orchestmux itself costs nothing.
-
-## Install
-
-```bash
-npm install -g orchestmux
-```
-
-From source:
-
-```bash
-git clone https://github.com/<you>/orchestmux && cd orchestmux
-npm install && npm run build && npm link
-```
 
 ## Quick start
 
@@ -245,6 +273,23 @@ outlive one window, so loop on it rather than treating it as an error:
 until orchestmux wait --timeout 600; do echo "still working…"; done
 ```
 
+## Slash commands
+
+| Command | Purpose |
+| --- | --- |
+| `/orchestmux:doctor` | Check prerequisites; offer to install the CLI |
+| `/orchestmux:run <what to do>` | Spawn workers, dispatch, wait, report |
+| `/orchestmux:ps` | Workers, tasks, unread reports |
+| `/orchestmux:down` | Tear down workers |
+
+```
+/orchestmux:run audit packages/api for unhandled promise rejections
+/orchestmux:run split the parser tests across codex and kimi
+```
+
+The skill fires on plain language too — "run codex and kimi in parallel on X" —
+so the commands are for discoverability, not a requirement.
+
 ## Agents
 
 `claude`, `codex`, `kimi`, `opencode`, `gemini`, and `shell`.
@@ -299,45 +344,6 @@ checked it. That synthesis is deliberately yours — see [Scope](#scope).
 
 **Split** — hand each worker an independent piece. Right when the work
 decomposes cleanly and the pieces do not touch each other.
-
-## Use it from Claude Code
-
-`orchestmux` ships as a Claude Code plugin: a skill that teaches an agent to
-act as the coordinator, plus slash commands.
-
-```bash
-npm i -g orchestmux
-```
-```
-/plugin marketplace add younghotkim/orchestmux
-/plugin install orchestmux@orchestmux
-```
-
-Installing the plugin does **not** install the CLI — Claude Code plugins ship
-skills and commands, not binaries. On a fresh machine run `/orchestmux:doctor`
-first: it checks tmux, Node, and the agent CLIs, and offers to
-`npm i -g orchestmux` for you, so onboarding never leaves the editor.
-
-| Command | Purpose |
-| --- | --- |
-| `/orchestmux:doctor` | Check prerequisites; offer to install the CLI |
-| `/orchestmux:run <what to do>` | Spawn workers, dispatch, wait, report |
-| `/orchestmux:ps` | Workers, tasks, unread reports |
-| `/orchestmux:down` | Tear down workers |
-
-```
-/orchestmux:run audit packages/api for unhandled promise rejections
-/orchestmux:run split the parser tests across codex and kimi
-```
-
-The skill also fires on plain language — "run codex and kimi in parallel on
-X" — so the commands are for discoverability, not a requirement.
-
-Prefer no plugin? Link the skill by hand:
-
-```bash
-ln -s "$(npm root -g)/orchestmux/skills/orchestmux" ~/.claude/skills/orchestmux
-```
 
 ## State
 
