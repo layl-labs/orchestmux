@@ -34,6 +34,50 @@ without restarting the task.
 - **No runtime dependencies.** State lives in SQLite via Node's built-in
   `node:sqlite`. No native builds, no background service.
 
+## What it looks like in practice
+
+Most people never type any of the commands further down this page. You ask
+Claude Code for something, and it plays coordinator:
+
+```
+/orchestmux:run have codex and kimi both look at the retry logic in
+                packages/api and propose improvements
+```
+
+From that one line:
+
+1. **It picks the shape of the work.** The same question to several agents
+   (*ensemble*), or different pieces to different workers (*split*). Above it
+   picks ensemble, because "propose improvements" is a judgement call where
+   models genuinely disagree — worth paying twice for. "Write the parser tests
+   and update the docs" would split instead: two unrelated jobs, no reason for
+   anyone to do the same work twice.
+2. **It opens a pane per agent** and hands each one the task plus a short
+   protocol telling it how to report back.
+3. **It waits for the whole set** — not for whoever finishes first, since you
+   cannot compare one answer.
+4. **It reads the answers and writes you one.** Where the agents agree comes
+   first, because independent agreement is the strongest signal available.
+   Where they disagree, it goes and checks the code itself and tells you which
+   one held up. What only one of them found gets verified before it is
+   repeated — a lone finding is either the most valuable result or a
+   hallucination.
+
+You get a single answer with the good parts of each, and the non-obvious
+findings attributed to whichever agent found them.
+
+Two things worth knowing about that flow:
+
+- **The comparing is done by Claude, not by this tool.** orchestmux hands over
+  tasks, records what came back, and gets it to the coordinator intact. It has
+  no opinion about which answer is better, and [that is on purpose](#scope).
+- **The panes stay open.** They are ordinary tmux panes, so you can watch the
+  agents work, scroll back through their reasoning, or type into one and take
+  it over. Nothing important happens somewhere you cannot look.
+
+The rest of this README is the CLI underneath. You need it if you are scripting
+this yourself; the plugin drives it for you otherwise.
+
 ## Requirements
 
 - **tmux** — workers are tmux panes; there is no fallback. macOS, Linux, or WSL.
