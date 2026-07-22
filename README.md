@@ -5,69 +5,59 @@
 [![CI](https://github.com/younghotkim/orchestmux/actions/workflows/ci.yml/badge.svg)](https://github.com/younghotkim/orchestmux/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/orchestmux.svg)](https://www.npmjs.com/package/orchestmux)
 
-Running coding agents in parallel is easy. Knowing when they are *done* is not.
-
-`orchestmux` dispatches tasks to Claude Code, Codex, Kimi, OpenCode, or Gemini
-workers and blocks until they actually report back — no polling terminal output,
-no guessing. Workers are real tmux panes, so you can attach mid-task and take
-one over. One terminal, no GUI, no daemon.
+**A lightweight, tmux-based multi-agent tool.** Tell Claude Code what you want
+in plain language, and it runs Codex, Kimi, Gemini, OpenCode — every coding
+CLI you're already subscribed to — in parallel, as real terminal panes you can
+watch and take over.
 
 ![orchestmux demo](https://raw.githubusercontent.com/younghotkim/orchestmux/main/docs/demo.gif)
 
-*Dispatching one task to codex and opencode, then collecting both reports.*
+*One task dispatched to codex and opencode, both reports collected.*
 
-**[How it works](#what-it-looks-like-in-practice)** · [Install](#install) · [Why](#why) · [Commands](#commands) · [Slash commands](#slash-commands) · [Agents](#agents) · [Scope](#scope)
+## What it does
 
-## What it looks like in practice
-
-Most people never type any of the commands further down this page. You ask
-Claude Code for something, and it plays coordinator:
+You type one line into Claude Code:
 
 ```
-/orchestmux:run have codex and kimi both look at the retry logic in
-                packages/api and propose improvements
+/orchestmux:run have codex and kimi review the retry logic in packages/api
 ```
 
-From that one line:
+That's the whole interface. From there, Claude:
 
-1. **It picks the shape of the work.** The same question to several agents
-   (*ensemble*), or different pieces to different workers (*split*). Above it
-   picks ensemble, because "propose improvements" is a judgement call where
-   models genuinely disagree — worth paying twice for. "Write the parser tests
-   and update the docs" would split instead: two unrelated jobs, no reason for
-   anyone to do the same work twice.
-2. **It opens a pane per agent** and hands each one the task plus a short
-   protocol telling it how to report back.
-3. **It waits for the whole set** — not for whoever finishes first, since you
-   cannot compare one answer.
-4. **It reads the answers and writes you one.** Where the agents agree comes
-   first, because independent agreement is the strongest signal available.
-   Where they disagree, it goes and checks the code itself and tells you which
-   one held up. What only one of them found gets verified before it is
-   repeated — a lone finding is either the most valuable result or a
-   hallucination.
+1. **Picks the shape of the work.** A judgement-heavy task goes to several
+   agents at once so the answers can be compared (*ensemble*). A job that
+   splits into independent pieces goes one piece per agent (*split*). You
+   don't choose — it does.
+2. **Opens a tmux pane per agent** in the terminal you already have open.
+3. **Waits until each worker actually reports back** — workers call in when
+   finished, so "done" is a recorded fact, not a guess from terminal output.
+4. **Reads the answers and writes you one** — agreements first, disagreements
+   checked against the code, lone findings verified before they're repeated.
 
-You get a single answer with the good parts of each, and the non-obvious
-findings attributed to whichever agent found them.
+Plain language works too — "run codex and kimi in parallel on X" does the same
+thing. The slash command is just for discoverability.
 
-Two things worth knowing about that flow:
+## Why this and not another orchestration tool
 
-- **The comparing is done by Claude, not by this tool.** orchestmux hands over
-  tasks, records what came back, and gets it to the coordinator intact. It has
-  no opinion about which answer is better, and [that is on purpose](#scope).
-- **The panes stay open.** They are ordinary tmux panes, so you can watch the
-  agents work, scroll back through their reasoning, or type into one and take
-  it over. Nothing important happens somewhere you cannot look.
-
-The rest of this README is the CLI underneath. You need it if you are scripting
-this yourself; the plugin drives it for you otherwise.
+- **No new interface to learn.** Most multi-agent tools hand you a board, a
+  config format, or a DSL. Here the coordinator is Claude Code itself: you say
+  what you want, in your own words, in the terminal you already use.
+- **Your existing subscriptions, in parallel.** Each worker is a CLI you
+  already installed and logged into. orchestmux provides no model access of
+  its own and adds zero API cost — it just lets your Claude, ChatGPT/Codex,
+  Kimi, and Gemini plans work at the same time.
+- **Nothing is hidden.** Workers are ordinary tmux panes. Watch them think,
+  scroll back through their reasoning, or type into one and take it over
+  mid-task.
+- **Failure is loud, not silent.** If a worker dies mid-task, the coordinator
+  is told immediately instead of waiting out a timeout. Reports survive after
+  panes close. Nothing gets stuck pretending to be "in progress".
+- **Nothing to run.** No daemon, no server, no GUI. State is one SQLite file
+  using Node's built-in module — no native builds.
 
 ## Install
 
-Two ways in. If you use Claude Code, take the first one — it installs the CLI
-for you.
-
-**As a Claude Code plugin** (easiest)
+If you use Claude Code, take the plugin — it installs the CLI for you:
 
 ```
 /plugin marketplace add younghotkim/orchestmux
@@ -75,189 +65,86 @@ for you.
 ```
 
 Then run `/orchestmux:doctor` once. It checks tmux, Node, and whichever agent
-CLIs you have, and offers to install the orchestmux CLI itself — plugins ship
-skills and commands, not binaries, so that part is not automatic. Onboarding
-never leaves the editor.
+CLIs you have, and offers to install the `orchestmux` CLI itself.
 
-**As a CLI on its own**
+Standalone CLI:
 
 ```bash
 npm install -g orchestmux
 ```
 
-From source:
+**Requirements:** tmux (macOS, Linux, or WSL) · Node >= 22.13 · at least one
+agent CLI installed and logged in.
+
+## The two shapes of parallel work
+
+**Ensemble** — the same task to several agents at once, answers compared.
+Worth paying twice when models genuinely disagree: designs, reviews, "what's
+wrong with this code". The synthesis leads with what the agents agree on,
+checks their disagreements against the code, and verifies anything only one
+of them found.
+
+**Split** — independent pieces to different agents. Right when the job
+decomposes cleanly: "write the parser tests and update the docs" is two
+unrelated jobs, so nobody does the same work twice.
+
+Claude picks between them from what you asked; you can always override by
+saying so.
+
+## Good to know
+
+- **`--yolo` grants unattended write access.** It adds each agent's
+  "skip approval prompts" flag. Without it agents stop to ask permission and
+  stall the swarm — but turning it on is deliberately your call, not a
+  default. For codex it also adds the working directory to the trusted list
+  in `~/.codex/config.toml` (codex blocks on a trust prompt no flag can
+  answer); this is announced when it happens.
+- **Panes stay open after a worker reports** — the scrollback is the only
+  record of *how* an answer was reached, and answers can be wrong. Clean up
+  when you've read the results (`sweep`), not before.
+- **A dead worker never strands you.** Its task is marked failed and the
+  waiting coordinator is notified right away. Interrupting, killing, or
+  tearing down a worker settles its in-flight task the same way.
+- **Swarms are isolated per session.** Two projects orchestrating at the same
+  time (`--session`) never see each other's tasks or steal each other's
+  reports.
+
+## Under the hood — the CLI
+
+Everything above is Claude driving a small CLI. You can script it yourself;
+this is the entire loop:
 
 ```bash
-git clone https://github.com/younghotkim/orchestmux && cd orchestmux
-npm install && npm run build && npm link
+orchestmux up                                      # tmux session
+orchestmux spawn --name w1 --agent codex --yolo    # worker pane
+TASK=$(orchestmux task add "audit packages/api for unhandled rejections")
+orchestmux dispatch --task $TASK --to w1           # task + reporting protocol
+orchestmux wait                                    # blocks until w1 reports
 ```
 
-Want the skill without the plugin? Link it by hand:
+`dispatch` relaunches the worker's pane with the task plus a short protocol
+telling it to run `orchestmux done --task <id> --body "<summary>"` when
+finished (or `ask` to pose a blocking question back). That callback is the
+whole mechanism.
 
-```bash
-ln -s "$(npm root -g)/orchestmux/skills/orchestmux" ~/.claude/skills/orchestmux
-```
-
-## Why
-
-Polling is the usual answer: watch the pane, wait for the prompt to come back,
-call it done. It misreads an agent that paused for input, and it burns the
-coordinator's own context re-reading output that has not changed.
-
-orchestmux inverts that. Every dispatched task carries a reporting protocol, so
-completion is a recorded fact: `orchestmux wait` returns because the worker said
-it was done, not because a heuristic decided it looked done. The same channel
-runs backwards — a blocked worker can `ask`, and the coordinator can `reply`
-without restarting the task.
-
-- **Nothing new to learn.** No board, no dashboard, no daemon, no window
-  manager of its own. It runs in the terminal you already have open, and the
-  only thing that changes is that a few panes now report for themselves.
-- **Real panes.** Workers are tmux panes. Attach, scroll back, type into them,
-  take over an agent mid-task. Nothing is hidden behind a viewer.
-- **Any CLI agent.** If it runs in a terminal, it can be a worker.
-- **No runtime dependencies.** State lives in SQLite via Node's built-in
-  `node:sqlite`. No native builds, no background service.
-
-## Requirements
-
-- **tmux** — workers are tmux panes; there is no fallback. macOS, Linux, or WSL.
-  Native Windows is not supported.
-- **Node >= 22.13** — the CLI uses the built-in `node:sqlite` module, which is
-  only available unflagged from 22.13 (or 23.4) onwards.
-- **At least one agent CLI**, installed and logged in. orchestmux provides no
-  model access of its own: every worker runs on that machine's own
-  subscriptions, so each person uses their own Claude/ChatGPT/Kimi plan and
-  orchestmux itself costs nothing.
-
-## Quick start
-
-```bash
-orchestmux up                                        # create the tmux session
-orchestmux spawn --name w1 --agent codex --yolo      # add a worker pane
-orchestmux attach                                    # (optional) watch it live
-
-TASK=$(orchestmux task add "Audit packages/api for unhandled promise rejections")
-orchestmux dispatch --task $TASK --to w1
-
-orchestmux wait --timeout 900                        # blocks until w1 reports
-```
-
-Parallel workers, then collect results one completion at a time:
-
-```bash
-orchestmux spawn --name w2 --agent kimi --yolo
-orchestmux dispatch --task $(orchestmux task add "Write tests for src/parser") --to w2
-
-for i in 1 2; do orchestmux wait --timeout 1800; done
-```
-
-## Watching workers
-
-By default workers live in a dedicated `orchestmux` tmux session, and you watch
-them with `orchestmux attach`.
-
-If the caller is **already inside tmux**, workers split its current window
-automatically, so they are visible the moment they spawn. orchestmux finds that
-window through the process tree rather than `$TMUX`, which agent harnesses
-routinely strip — pass `--no-here` if you want a dedicated session anyway.
-
-```bash
-orchestmux spawn --name w1 --agent codex --yolo
-orchestmux spawn --name w2 --agent kimi  --yolo
-```
-
-Otherwise workers go to the `orchestmux` session, which nobody is attached to
-by default. `orchestmux watch` fixes that: it opens a terminal already attached
-(Windows Terminal under WSL, Terminal.app on macOS).
-
-```
-┌─ your window ───────────────────────────────────┐
-│ $ orchestmux wait          │ w1  codex          │
-│ (coordinator, your shell)  │ working…           │
-│                            ├────────────────────┤
-│                            │ w2  kimi           │
-└────────────────────────────┴────────────────────┘
-```
-
-Panes are real: scroll back, type into them, take an agent over mid-task.
-`orchestmux down` removes worker panes but never kills a session you are
-sitting in.
-
-Panes deliberately stay open after a worker reports — even when the agent
-process exits on its own, as `kimi` and `gemini` do after a one-shot prompt
-(the pane is kept with `remain-on-exit`, and `dispatch` can revive it). The
-scrollback is the only record of *how* a worker reached its conclusion, and
-reports can be wrong — closing the pane on `done` would destroy the evidence
-you need to check one. Clear the finished ones when you have read the results:
-
-```bash
-orchestmux sweep --dry-run   # what would go
-orchestmux sweep             # workers still working are kept
-orchestmux task clear        # drop finished tasks and their messages
-```
-
-A worker that dies before reporting does not strand you either: a running
-`wait` notices the dead pane, marks the task `failed`, and returns an
-`escalation` message instead of blocking out the timeout. `sweep`, `kill`, and
-`down` mark the in-flight tasks of the workers they remove the same way, so
-nothing sits in `dispatched` pretending to still be in flight.
-
-## How dispatch works
-
-`dispatch` relaunches the worker's pane with the agent, handing it the task
-spec and a short protocol block as a launch argument:
-
-```
-[ORCHESTMUX TASK t_a1b2c3d4]
-
-<your task spec>
-
---- reporting protocol (required) ---
-A coordinator is blocked waiting on you. When the work is finished, run exactly:
-  orchestmux done --task t_a1b2c3d4 --body "<3-5 sentence summary>"
-
-If you are blocked and need a decision before you can continue, run:
-  orchestmux ask --task t_a1b2c3d4 --question "<your question>"
-```
-
-The worker's pane is spawned with `ORCHESTMUX_WORKER` set, so `done` and `ask`
-know who is calling without any extra flags. That callback is the whole
-mechanism — completion is a recorded fact, not an inference from scrollback.
-
-The prompt never gets typed into a live composer. Doing that has to win three
-races — the agent must be mounted, the bracketed paste must finish before the
-submit key lands, and the pane must not be in tmux copy-mode — and losing any
-one of them strands the prompt unsent with no error. Launch arguments have none
-of those failure modes, so each dispatch relaunches the agent with a clean
-context.
-
-`ask` blocks the worker until the coordinator answers:
-
-```bash
-# coordinator
-orchestmux wait                       # → [ask] w1 … id=m_9f8e7d6c
-orchestmux reply --id m_9f8e7d6c --body "Use the v2 endpoint."
-```
-
-## Commands
+<details>
+<summary><b>Full command reference</b></summary>
 
 | Command | Description |
 | --- | --- |
 | `up` | Create the tmux session |
-| `spawn --name <w> --agent <a> [--yolo]` | Add a worker pane running an agent |
+| `spawn --name <w> --agent <a> [--yolo] [--here] [-- <args…>]` | Add a worker pane (`--here` splits your current window; args after `--` go to the agent) |
 | `task add "<spec>"` | Create a task, prints its id |
 | `task list [--json]` | List tasks |
 | `task update --id <id> --status <s>` | Recover a task stuck in `dispatched` |
 | `task rm --id <id>` / `task clear` | Delete one task / all finished ones |
 | `dispatch --task <id> --to <w> [--force]` | Inject task + protocol into a worker |
-| `wait [--types done,ask] [--timeout 900]` | Block until a worker reports |
-| `wait --count <n>` / `wait --all` | Collect n reports, or everything queued |
+| `wait [--types done,ask] [--timeout 900]` | Block until a worker reports (exit 2 on timeout) |
+| `wait --count <n>` / `wait --all` | Hold for n reports / drain what's queued |
 | `report [--task <id>] [--json]` | Re-read reports `wait` already collected |
 | `reply --id <msg> --body "<answer>"` | Answer a worker's `ask` |
 | `ps [--json]` | Workers, tasks, unread count |
-| `attach` | Attach to the tmux session |
-| `watch` | Open a terminal already attached to the session |
+| `attach` / `watch` | Attach to the session / open a terminal attached to it |
 | `sweep [--dry-run]` | Remove workers with nothing left to do |
 | `kill --name <w>` / `down` | Remove one worker / tear down the session |
 
@@ -268,123 +155,34 @@ Called by workers inside a spawned pane:
 | `done --task <id> --body "<summary>" [--failed]` | Report completion |
 | `ask --task <id> --question "<q>"` | Blocking question to the coordinator |
 
-One worker runs one task at a time: dispatching again to a busy worker
-interrupts it and loses its first report, so `dispatch` refuses (`--force`
-interrupts anyway and marks the abandoned task `failed`). Parallelism comes
-from more workers, never from more dispatches. A `done` on a task that already
-has a report is refused too — agents retry commands whose output they missed,
-and the duplicate must not count as a second worker's answer.
+Rules that matter:
 
-`wait` exits `2` on timeout — a checkpoint, not a failure. Long tasks routinely
-outlive one window, so loop on it rather than treating it as an error:
+- **One worker, one task at a time.** Dispatching to a busy worker interrupts
+  it and loses its report, so `dispatch` refuses (`--force` interrupts anyway
+  and marks the abandoned task failed). Parallelism comes from more workers.
+- **A task that already has a report refuses a second `done`** — agents retry
+  commands whose output they missed, and a duplicate must not count as a
+  second worker's answer.
+- **`wait` exits 2 on timeout — a checkpoint, not a failure.** Real tasks run
+  15–60 minutes; loop on it: `until orchestmux wait --timeout 600; do :; done`
+- **An `escalation` from `wait` means a worker died mid-task**; the task is
+  already marked failed, and the pane scrollback shows why.
 
-```bash
-until orchestmux wait --timeout 600; do echo "still working…"; done
-```
+Agents: `claude`, `codex`, `kimi`, `opencode`, `gemini`, `shell` (a plain
+shell for testing the protocol by hand — don't `dispatch` to it).
 
-## Slash commands
+State lives in `~/.orchestmux/state.db` (`ORCHESTMUX_HOME` to move it), scoped
+per session (`--session` / `ORCHESTMUX_SESSION`, default `orchestmux`).
 
-| Command | Purpose |
-| --- | --- |
-| `/orchestmux:doctor` | Check prerequisites; offer to install the CLI |
-| `/orchestmux:run <what to do>` | Spawn workers, dispatch, wait, report |
-| `/orchestmux:ps` | Workers, tasks, unread reports |
-| `/orchestmux:down` | Tear down workers |
-
-```
-/orchestmux:run audit packages/api for unhandled promise rejections
-/orchestmux:run split the parser tests across codex and kimi
-```
-
-The skill fires on plain language too — "run codex and kimi in parallel on X" —
-so the commands are for discoverability, not a requirement.
-
-## Agents
-
-`claude`, `codex`, `kimi`, `opencode`, `gemini`, and `shell`.
-
-`--yolo` adds each agent's "run without approval prompts" flag
-(`--dangerously-skip-permissions` for Claude Code,
-`--dangerously-bypass-approvals-and-sandbox` for Codex, `--yolo` for Gemini).
-It is **off by default** — an agent that stops for approval will stall the
-coordinator, but granting unattended write access is your call to make
-explicitly.
-
-> **`--yolo` with codex also edits your codex config.** Codex blocks on a
-> per-directory trust prompt that no flag can answer, so spawning a codex
-> worker with `--yolo` adds the working directory to the trusted list in
-> `~/.codex/config.toml`. Without it the worker would sit on that prompt and
-> never read its task. It is announced when it happens, and nothing else in
-> orchestmux writes outside its own state directory.
-
-Extra arguments after the flags are passed to the agent:
-
-```bash
-orchestmux spawn --name w1 --agent codex --yolo -- --model gpt-5.5
-```
-
-`shell` spawns a plain shell. It is useful for exercising the protocol by hand
-— call `done` yourself from inside the pane. Do not `dispatch` to it: the
-prompt is passed as a launch argument, which a bare shell treats as a script
-path and exits on immediately.
-
-## Two shapes of parallel work
-
-**Ensemble** — give the same task to several agents at once and compare what
-comes back. Worth the extra tokens when judgement actually differs between
-models: design proposals, review, "what is wrong with this code".
-
-```bash
-SPEC="Propose improvements to packages/api, citing the code"
-for a in codex kimi; do
-  orchestmux spawn --name w_$a --agent $a --yolo
-  orchestmux dispatch --task "$(orchestmux task add "$SPEC")" --to w_$a
-done
-orchestmux wait --count 2 --timeout 1800    # holds until both have answered
-```
-
-`wait` consumes each report once, so `orchestmux report` is how you read them
-again while you write the synthesis up — or later, once the panes are gone.
-
-Do not concatenate the reports. **Where the agents agree** is the strongest
-signal and belongs first; **where they disagree**, go read the code and say
-which one was right; **what only one of them found** goes in after you have
-checked it. That synthesis is deliberately yours — see [Scope](#scope).
-
-**Split** — hand each worker an independent piece. Right when the work
-decomposes cleanly and the pieces do not touch each other.
-
-## State
-
-Everything lives in `~/.orchestmux/state.db` (override with `ORCHESTMUX_HOME`):
-workers, tasks, and the message log. All of it is scoped per session — a
-session's `wait` only ever sees that session's reports, worker names only have
-to be unique within one, and workers inherit their session through the pane
-environment so their reports land back where the dispatch came from. Sessions
-default to `orchestmux` (override with `--session` or `ORCHESTMUX_SESSION`),
-so several independent swarms can run side by side without stealing each
-other's reports.
+</details>
 
 ## Scope
 
 This is the core loop — spawn, dispatch, wait, report, ask. Left out on
-purpose, not missing:
-
-- **Judging or merging what workers report.** No consensus, no best-of-N, no
-  auto-review of one agent's diff by another.
-- **Worktree isolation and merge.** Workers share the directory you point them
-  at; keeping their edits apart is your call.
-- **Task dependency graphs, decision gates, coordinator auto-loops.**
-- **Retry, cost, and timeout policy.**
-
-The first one is the load-bearing decision. This tool's whole claim is that
-completion is a *recorded fact* rather than something inferred from terminal
-output — and "which of these two answers is better" is exactly the kind of
-inference it refuses to make on your behalf. Your coordinator is usually an
-agent that is far better at that judgement than any rule this could ship, so
-orchestmux gets the reports to it intact and stops there.
-
-The rest is held back until the core proves itself in daily use.
+purpose: judging or merging what workers report (your coordinator agent is
+better at that than any rule this could ship), worktree isolation, dependency
+graphs, retry/cost policy. The tool records facts and gets them to the
+coordinator intact; the thinking stays with the coordinator.
 
 ## License
 
