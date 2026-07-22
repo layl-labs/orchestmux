@@ -192,6 +192,8 @@ orchestmux reply --id m_9f8e7d6c --body "v2 엔드포인트를 사용하세요."
 | `task rm --id <id>` | 작업을 삭제합니다 |
 | `dispatch --task <id> --to <w>` | 작업과 프로토콜을 워커에 전달합니다 |
 | `wait [--types done,ask] [--timeout 900]` | 워커 보고까지 블로킹합니다 |
+| `wait --count <n>` / `wait --all` | n개 보고를 모을 때까지 / 쌓인 것 전부 |
+| `report [--task <id>] [--json]` | `wait`이 수거한 보고를 다시 읽습니다 |
 | `reply --id <msg> --body "<답변>"` | 워커의 `ask`에 답변합니다 |
 | `ps [--json]` | 워커·작업·미확인 보고를 조회합니다 |
 | `attach` / `watch` | 세션에 붙기 / attach된 터미널 창 열기 |
@@ -265,8 +267,11 @@ for a in codex kimi; do
   orchestmux spawn --name w_$a --agent $a --yolo
   orchestmux dispatch --task "$(orchestmux task add "$SPEC")" --to w_$a
 done
-for i in 1 2; do orchestmux wait --timeout 1800; done
+orchestmux wait --count 2 --timeout 1800    # 둘 다 답할 때까지 붙잡습니다
 ```
+
+`wait`은 보고를 한 번만 소비하므로, 종합을 정리하는 동안(또는 pane을 정리한
+뒤에) 다시 읽으려면 `orchestmux report`를 사용하세요.
 
 결과를 종합할 때는 단순히 이어 붙이지 마세요. **여러 에이전트가 동의한 지점**이
 가장 강한 신호이므로 그것부터 제시하고, **이견이 갈린 부분**은 직접 코드로 확인한

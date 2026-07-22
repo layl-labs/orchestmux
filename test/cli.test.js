@@ -140,6 +140,88 @@ test('wait blocks until a report actually arrives', async (t) => {
   assert.equal(JSON.parse(result.stdout).body, 'late but done');
 });
 
+test('wait --count holds until every ensemble worker has reported', (t) => {
+  const home = makeHome(t);
+  const a = addTask(home, 'same question, agent A');
+  const b = addTask(home, 'same question, agent B');
+  run(home, ['done', '--task', a, '--from', 'wA', '--body', 'answer A']);
+
+  // Only one of the two has reported, so a wait for both must not return yet.
+  const short = run(home, ['wait', '--count', '2', '--json', '--timeout', '0.5']);
+  assert.equal(short.status, 2, 'an incomplete set is a timeout, not a success');
+  const partial = JSON.parse(short.stdout);
+  assert.equal(partial.length, 1, 'reports already collected are still printed');
+  assert.equal(partial[0].body, 'answer A');
+
+  // That first report was consumed; once B lands, a wait for the rest returns.
+  run(home, ['done', '--task', b, '--from', 'wB', '--body', 'answer B']);
+  const rest = runJson(home, ['wait', '--count', '1', '--json', '--timeout', '5']);
+  assert.equal(rest.body, 'answer B');
+});
+
+test('wait --all drains everything queued in one call', (t) => {
+  const home = makeHome(t);
+  const ids = ['one', 'two', 'three'].map((s) => addTask(home, s));
+  ids.forEach((id, i) => run(home, ['done', '--task', id, '--from', `w${i}`, '--body', `report ${i}`]));
+
+  const all = runJson(home, ['wait', '--all', '--json', '--timeout', '5']);
+  assert.equal(all.length, 3, 'all three reports should come back together');
+  assert.deepEqual(all.map((m) => m.body), ['report 0', 'report 1', 'report 2']);
+
+  // Everything was marked read, so there is nothing left to drain.
+  assert.equal(run(home, ['wait', '--all', '--json', '--timeout', '0.5']).status, 2);
+});
+
+test('wait returns a bare object when asked for a single report', (t) => {
+  const home = makeHome(t);
+  const id = addTask(home);
+  run(home, ['done', '--task', id, '--from', 'w1', '--body', 'solo']);
+
+  // Callers written against the original single-message contract must not
+  // suddenly receive an array.
+  const msg = runJson(home, ['wait', '--json', '--timeout', '5']);
+  assert.equal(Array.isArray(msg), false);
+  assert.equal(msg.body, 'solo');
+});
+
+test('report re-reads collected reports after wait consumed them', (t) => {
+  const home = makeHome(t);
+  const a = addTask(home, 'audit the parser');
+  const b = addTask(home, 'audit the api');
+  run(home, ['done', '--task', a, '--from', 'wA', '--body', 'parser looks fine']);
+  run(home, ['done', '--task', b, '--from', 'wB', '--failed', '--body', 'api never built']);
+
+  // Consume both the way a coordinator would.
+  assert.equal(runJson(home, ['wait', '--all', '--json', '--timeout', '5']).length, 2);
+
+  const reports = runJson(home, ['report', '--json']);
+  assert.equal(reports.length, 2, 'reading a report must not consume it');
+  assert.deepEqual(reports.map((r) => r.body), ['parser looks fine', 'api never built']);
+  assert.deepEqual(reports.map((r) => r.status), ['done', 'failed']);
+  assert.equal(reports[0].spec, 'audit the parser', 'the report carries what was asked');
+
+  const one = runJson(home, ['report', '--task', b, '--json']);
+  assert.equal(one.length, 1);
+  assert.equal(one[0].from_worker, 'wB');
+
+  // Plain-text output is what a human actually reads.
+  const text = run(home, ['report']);
+  assert.equal(text.status, 0, text.stderr);
+  assert.match(text.stdout, /parser looks fine/);
+  assert.match(text.stdout, /api never built/);
+});
+
+test('report is honest when there is nothing to show', (t) => {
+  const home = makeHome(t);
+  const id = addTask(home);
+  assert.match(run(home, ['report']).stdout, /no reports yet/);
+  assert.match(run(home, ['report', '--task', id]).stdout, new RegExp(`no report for ${id}`));
+
+  const missing = run(home, ['report', '--task', 't_nope']);
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /no such task/);
+});
+
 test('wait --types ignores report kinds the coordinator did not ask for', (t) => {
   const home = makeHome(t);
   const id = addTask(home);

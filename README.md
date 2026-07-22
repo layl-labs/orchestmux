@@ -174,6 +174,8 @@ orchestmux reply --id m_9f8e7d6c --body "Use the v2 endpoint."
 | `task rm --id <id>` | Delete a task |
 | `dispatch --task <id> --to <w>` | Inject task + protocol into a worker |
 | `wait [--types done,ask] [--timeout 900]` | Block until a worker reports |
+| `wait --count <n>` / `wait --all` | Collect n reports, or everything queued |
+| `report [--task <id>] [--json]` | Re-read reports `wait` already collected |
 | `reply --id <msg> --body "<answer>"` | Answer a worker's `ask` |
 | `ps [--json]` | Workers, tasks, unread count |
 | `attach` | Attach to the tmux session |
@@ -240,8 +242,11 @@ for a in codex kimi; do
   orchestmux spawn --name w_$a --agent $a --yolo
   orchestmux dispatch --task "$(orchestmux task add "$SPEC")" --to w_$a
 done
-for i in 1 2; do orchestmux wait --timeout 1800; done
+orchestmux wait --count 2 --timeout 1800    # holds until both have answered
 ```
+
+`wait` consumes each report once, so `orchestmux report` is how you read them
+again while you write the synthesis up — or later, once the panes are gone.
 
 Do not concatenate the reports. **Where the agents agree** is the strongest
 signal and belongs first; **where they disagree**, go read the code and say

@@ -319,43 +319,119 @@ function cmdDispatch(db: DatabaseSync, args: Args): void {
   console.log(`dispatched ${taskId} -> ${to}`);
 }
 
+function printMessage(msg: Message): void {
+  console.log(`[${msg.type}] ${msg.from_worker ?? '?'}  task=${msg.task_id ?? '-'}  id=${msg.id}`);
+  if (msg.subject) console.log(msg.subject);
+  if (msg.body) console.log(msg.body);
+  if (msg.type === 'ask') {
+    console.log(`\nanswer with: orchestmux reply --id ${msg.id} --body "<answer>"`);
+  }
+}
+
+/**
+ * Blocks until workers report.
+ *
+ * One report at a time is the default because a coordinator usually wants to
+ * act on each as it lands. `--count` is for the ensemble case: several workers
+ * were given the same task, and comparing their answers means holding all of
+ * them at once rather than reacting to whichever finished first.
+ */
 function cmdWait(db: DatabaseSync, args: Args): void {
   const types = (str(args, 'types') ?? 'done,ask,escalation').split(',').map((t) => t.trim());
   const timeoutMs = num(args, 'timeout', 900) * 1000;
   const asJson = bool(args, 'json', false);
+  const drain = bool(args, 'all', false);
+  const want = drain ? Infinity : Math.max(1, Math.floor(num(args, 'count', 1)));
+  // A caller asking for one message still gets the bare object it always got.
+  const asList = drain || want > 1;
   const deadline = Date.now() + timeoutMs;
   const placeholders = types.map(() => '?').join(',');
 
-  while (Date.now() < deadline) {
-    const msg = db
-      .prepare(
-        `SELECT * FROM messages
-          WHERE to_worker IS NULL AND read_at IS NULL AND type IN (${placeholders})
-          ORDER BY created_at LIMIT 1`,
-      )
-      .get(...types) as Message | undefined;
+  const collected: Message[] = [];
+  const select = db.prepare(
+    `SELECT * FROM messages
+      WHERE to_worker IS NULL AND read_at IS NULL AND type IN (${placeholders})
+      ORDER BY created_at`,
+  );
+  const markRead = db.prepare('UPDATE messages SET read_at = ? WHERE id = ?');
 
-    if (msg) {
-      db.prepare('UPDATE messages SET read_at = ? WHERE id = ?').run(now(), msg.id);
-      if (asJson) {
-        console.log(JSON.stringify(msg, null, 2));
-      } else {
-        console.log(`[${msg.type}] ${msg.from_worker ?? '?'}  task=${msg.task_id ?? '-'}  id=${msg.id}`);
-        if (msg.subject) console.log(msg.subject);
-        if (msg.body) console.log(msg.body);
-        if (msg.type === 'ask') {
-          console.log(`\nanswer with: orchestmux reply --id ${msg.id} --body "<answer>"`);
-        }
-      }
-      return;
+  while (Date.now() < deadline) {
+    for (const msg of select.all(...types) as unknown as Message[]) {
+      markRead.run(now(), msg.id);
+      collected.push(msg);
+      if (collected.length >= want) break;
     }
+    // --all takes whatever had piled up, but still waits for the first one:
+    // returning empty the instant nothing has arrived would defeat the point.
+    if (collected.length >= want || (drain && collected.length > 0)) break;
     sleep(POLL_MS);
   }
 
-  if (asJson) console.log(JSON.stringify({ count: 0, timedOut: true }));
-  else console.log(`(no message within ${timeoutMs / 1000}s)`);
-  // A timeout is a checkpoint, not a failure — distinct exit code so callers can loop.
-  process.exit(2);
+  if (collected.length === 0) {
+    if (asJson) console.log(JSON.stringify({ count: 0, timedOut: true }));
+    else console.log(`(no message within ${timeoutMs / 1000}s)`);
+    // A timeout is a checkpoint, not a failure — distinct exit code so callers can loop.
+    process.exit(2);
+  }
+
+  if (asJson) {
+    console.log(JSON.stringify(asList ? collected : collected[0], null, 2));
+  } else {
+    collected.forEach((msg, i) => {
+      if (i > 0) console.log('');
+      printMessage(msg);
+    });
+  }
+
+  // Fewer than asked for means the deadline hit first. The reports collected
+  // are real, so they are printed either way — the exit code is what tells a
+  // script the set is short.
+  if (collected.length < want && want !== Infinity) process.exit(2);
+}
+
+/**
+ * Reports are recorded, so they have to be readable after the fact. `wait`
+ * consumes each message once; without this the only copy of a worker's
+ * conclusion would be whatever is still in the terminal's scrollback.
+ */
+function cmdReport(db: DatabaseSync, args: Args): void {
+  const taskId = str(args, 'task');
+  if (taskId && !getTask(db, taskId)) fail(`no such task: ${taskId}`);
+
+  const rows = db
+    .prepare(
+      `SELECT m.id, m.task_id, m.from_worker, m.body, m.created_at,
+              t.spec, t.status, t.assignee
+         FROM messages m
+         JOIN tasks t ON t.id = m.task_id
+        WHERE m.type = 'done'${taskId ? ' AND m.task_id = ?' : ''}
+        ORDER BY m.created_at`,
+    )
+    .all(...(taskId ? [taskId] : [])) as unknown as {
+    id: string;
+    task_id: string;
+    from_worker: string | null;
+    body: string | null;
+    created_at: string;
+    spec: string;
+    status: string;
+    assignee: string | null;
+  }[];
+
+  if (bool(args, 'json', false)) {
+    console.log(JSON.stringify(rows, null, 2));
+    return;
+  }
+  if (rows.length === 0) {
+    console.log(taskId ? `(no report for ${taskId})` : '(no reports yet)');
+    return;
+  }
+  rows.forEach((r, i) => {
+    if (i > 0) console.log('');
+    console.log(`${r.task_id}  ${r.status}  ${r.from_worker ?? '-'}  ${r.created_at}`);
+    console.log(`  task: ${oneLine(r.spec, 70)}`);
+    for (const line of (r.body ?? '').split('\n')) console.log(`  ${line}`);
+  });
 }
 
 function cmdDone(db: DatabaseSync, args: Args): void {
@@ -626,6 +702,8 @@ const HELP = `orchestmux — multi-agent orchestration for coding CLIs in tmux
   task rm --id <id>                         delete a task
   dispatch --task <id> --to <w>             inject the task + protocol into a worker
   wait [--types done,ask] [--timeout 900]   block until a worker reports (exit 2 on timeout)
+       [--count <n> | --all]                ...collect n reports, or everything queued
+  report [--task <id>] [--json]             re-read collected reports
   reply --id <msg> --body "<answer>"        answer a worker's ask
   ps [--json]                               workers, tasks, unread count
   attach | watch                            attach to the session | open a terminal attached to it
@@ -668,6 +746,8 @@ function main(): void {
       return cmdDispatch(db, args);
     case 'wait':
       return cmdWait(db, args);
+    case 'report':
+      return cmdReport(db, args);
     case 'done':
       return cmdDone(db, args);
     case 'ask':

@@ -76,7 +76,9 @@ Rules that matter:
 - **One worker, one task at a time.** Dispatching to a busy worker interrupts
   it and loses its first report, so `dispatch` refuses. Parallelism comes from
   spawning more workers, never from more dispatches to one.
-- **One `wait` returns one message.** With N workers running, loop N times.
+- **One `wait` returns one message.** With N workers running, loop N times —
+  or `wait --count N` to hold until all N have answered, which is what you
+  want when the same task went to several agents and you mean to compare.
 - **Timeout is a checkpoint, not a failure.** `wait` exits 2 when nothing
   arrived; real coding tasks run 15-60 minutes. Keep waiting, or check
   `orchestmux ps` and `tmux capture-pane -p -t <pane>` for liveness. Do not kill
@@ -119,6 +121,10 @@ When `wait` returns a `done`, its body is the worker's own summary. Read it,
 verify anything load-bearing yourself (the worker may be wrong), then report to
 the user in your own words. Say plainly which worker did what.
 
+`wait` consumes each report once. Use `orchestmux report` to read them again —
+when you are comparing several answers, or when the reports have scrolled out
+of view. Comparing and judging the answers is your job, not the tool's.
+
 If a worker reports failure (`--failed`) or goes silent past a reasonable
 window, say so — do not quietly redo its work and present it as the worker's
 result.
@@ -146,6 +152,8 @@ check a claim. Sweep once the user has the results, or when they ask.
 | `task list [--json]` | List tasks and their status |
 | `dispatch --task <id> --to <w>` | Send task + protocol to a worker |
 | `wait [--types done,ask] [--timeout <s>]` | Block for the next report |
+| `wait --count <n>` / `wait --all` | Hold for n reports / drain what is queued |
+| `report [--task <id>] [--json]` | Re-read reports; `wait` consumes each once |
 | `reply --id <msg> --body "<answer>"` | Answer a worker's `ask` |
 | `ps [--json]` | Workers, tasks, unread count |
 | `attach` | Attach to the tmux session (for the user) |
