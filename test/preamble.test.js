@@ -29,7 +29,15 @@ test('tells the worker to report failures through the same call', () => {
   // A worker that treats failure as "nothing to report" is the one way a
   // dispatched task can strand the coordinator without anything crashing.
   assert.match(p, /same `done` call even if the task failed/);
+  // Naming the flag matters: without it a failed run gets reported as a
+  // plain done and the task records success.
+  assert.match(p, /add --failed/);
   assert.match(p, /without that call the coordinator waits forever/);
+});
+
+test('warns that ask can time out so the worker does not treat exit 3 as an answer', () => {
+  const p = dispatchPrompt(OPTS);
+  assert.match(p, /exits with code 3 — run it again to keep waiting/);
 });
 
 test('uses the resolved cli invocation verbatim when orchestmux is not on PATH', () => {

@@ -52,8 +52,9 @@ export function dispatchPrompt(opts: { taskId: string; spec: string; cli: string
     'If you are blocked and need a decision before you can continue, run:',
     `  ${cli} ask --task ${taskId} --question "<your question>"`,
     '  It blocks until the coordinator answers, then prints the answer to stdout.',
+    '  If no answer arrives within 15 minutes it exits with code 3 — run it again to keep waiting.',
     '',
-    'Report with the same `done` call even if the task failed — say so in the body.',
+    'Report with the same `done` call even if the task failed — add --failed and say what went wrong in the body.',
     'Do not skip it: without that call the coordinator waits forever.',
   ].join('\n');
 }
