@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Trusted publishing: npm verifies this workflow's OIDC identity instead
+      # of an access token, so releases need neither a stored secret nor an OTP.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: npm ci
+      # Never ship a tag that cannot pass its own suite.
+      - run: npm test
+      - run: npm publish
