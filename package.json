@@ -1,6 +1,6 @@
 {
   "name": "orchestmux",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Multi-agent orchestration for coding CLIs — dispatch tasks to Claude Code, Codex, Kimi, OpenCode, or Gemini workers and block until they actually report back.",
   "keywords": [
     "multi-agent",
