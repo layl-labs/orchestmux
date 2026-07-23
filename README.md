@@ -176,8 +176,11 @@ Rules that matter:
 - **An `escalation` from `wait` means a worker died mid-task**; the task is
   already marked failed, and the pane scrollback shows why.
 
-Agents: `claude`, `codex`, `kimi`, `opencode`, `gemini`, `shell` (a plain
-shell for testing the protocol by hand — don't `dispatch` to it).
+Agents: `claude`, `codex`, `kimi`, `opencode`, `gemini`, `qwen`, `agy`
+(Antigravity CLI), `cursor` (Cursor CLI), `aider`, `amp`, `copilot` (GitHub
+Copilot CLI), `crush`, `droid` (Factory), and `shell` (a plain shell for testing
+the protocol by hand — don't `dispatch` to it). Only the ones actually installed
+on your `PATH` can spawn; the rest fail fast with a "not found" message.
 
 State lives in `~/.orchestmux/state.db` (`ORCHESTMUX_HOME` to move it), scoped
 per session (`--session` / `ORCHESTMUX_SESSION`, default `orchestmux`).

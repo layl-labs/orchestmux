@@ -6,6 +6,12 @@ export type PromptMode = { kind: 'positional' } | { kind: 'flag'; flag: string }
 export interface AgentSpec {
   /** Executable expected on PATH. */
   cmd: string;
+  /**
+   * Arguments that must ALWAYS precede the prompt — subcommands (`run`, `exec`)
+   * or headless-mode switches (`-p`) an agent needs to run non-interactively at
+   * all. Unlike `autonomousArgs`, these are present in both modes.
+   */
+  baseArgs?: string[];
   /** Flags that let the agent act without stopping for interactive approval. */
   autonomousArgs: string[];
   /**
@@ -41,6 +47,61 @@ export const AGENTS: Record<string, AgentSpec> = {
     autonomousArgs: ['--yolo'],
     prompt: { kind: 'flag', flag: '-p' },
   },
+  // Google Antigravity CLI. `-p` runs headless (auto-approves tool calls on its
+  // own); --dangerously-skip-permissions also clears command-execution prompts.
+  agy: {
+    cmd: 'agy',
+    autonomousArgs: ['--dangerously-skip-permissions'],
+    prompt: { kind: 'flag', flag: '-p' },
+  },
+  // qwen-code is a gemini-cli fork and shares its surface exactly.
+  qwen: {
+    cmd: 'qwen',
+    autonomousArgs: ['--yolo'],
+    prompt: { kind: 'flag', flag: '-p' },
+  },
+  // Cursor CLI. `-p` is the headless print switch (always needed); the prompt
+  // is positional. `--force` auto-approves tool/command execution.
+  cursor: {
+    cmd: 'cursor-agent',
+    baseArgs: ['-p'],
+    autonomousArgs: ['--force'],
+    prompt: { kind: 'positional' },
+  },
+  // aider runs one message and exits. `--yes-always` skips every confirmation.
+  aider: {
+    cmd: 'aider',
+    autonomousArgs: ['--yes-always'],
+    prompt: { kind: 'flag', flag: '--message' },
+  },
+  // Sourcegraph Amp. `-x` executes the prompt and exits. Amp does not prompt
+  // for tool approval by default; --dangerously-allow-all forces it fully.
+  amp: {
+    cmd: 'amp',
+    autonomousArgs: ['--dangerously-allow-all'],
+    prompt: { kind: 'flag', flag: '-x' },
+  },
+  // GitHub Copilot CLI (@github/copilot). --allow-all-tools skips approvals.
+  copilot: {
+    cmd: 'copilot',
+    autonomousArgs: ['--allow-all-tools'],
+    prompt: { kind: 'flag', flag: '-p' },
+  },
+  // Charm Crush. `run` is the non-interactive subcommand; prompt is positional.
+  crush: {
+    cmd: 'crush',
+    baseArgs: ['run'],
+    autonomousArgs: ['--yolo'],
+    prompt: { kind: 'positional' },
+  },
+  // Factory droid. `exec` is the headless subcommand; `--auto high` grants the
+  // widest autonomy without the unsafe permission bypass.
+  droid: {
+    cmd: 'droid',
+    baseArgs: ['exec'],
+    autonomousArgs: ['--auto', 'high'],
+    prompt: { kind: 'positional' },
+  },
   shell: {
     cmd: process.env.SHELL || 'bash',
     autonomousArgs: [],
@@ -73,7 +134,11 @@ export function buildCommand(
 ): string {
   const spec = AGENTS[agent];
   if (!spec) throw new Error(`unknown agent "${agent}" (known: ${agentNames().join(', ')})`);
-  const args = [...(autonomous ? spec.autonomousArgs : []), ...extraArgs];
+  const args = [
+    ...(spec.baseArgs ?? []),
+    ...(autonomous ? spec.autonomousArgs : []),
+    ...extraArgs,
+  ];
   if (prompt !== undefined && prompt !== '') {
     if (spec.prompt.kind === 'flag') args.push(spec.prompt.flag, prompt);
     else args.push(prompt);
