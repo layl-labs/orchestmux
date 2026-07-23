@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Multi-agent orchestration for coding CLIs in tmux — spawn, dispatch, and wait on Claude Code, Codex, Kimi, OpenCode, and Gemini workers from one terminal.",
-    "version": "0.5.0"
+    "version": "0.5.1"
   },
   "plugins": [
     {
@@ -26,5 +26,5 @@
       ]
     }
   ],
-  "version": "0.5.0"
+  "version": "0.5.1"
 }
