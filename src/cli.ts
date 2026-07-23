@@ -888,6 +888,7 @@ const HELP = `orchestmux — multi-agent orchestration for coding CLIs in tmux
   attach | watch                            attach to the session | open a terminal attached to it
   sweep [--dry-run]                         remove workers with nothing left to do
   kill --name <w> | down                    remove one worker | tear down the session
+  agents                                    list every agent's binary and whether it is installed
 
   called by workers (inside a spawned pane):
   done --task <id> --body "<summary>" [--failed]
@@ -908,6 +909,15 @@ function main(): void {
   }
   if (cmd === 'version') {
     console.log(packageVersion());
+    return;
+  }
+  // Tab-separated `name\tcmd\tinstalled` per agent, using the same PATH check
+  // spawn does — the single source of truth for tooling like `doctor` that
+  // must not drift when the roster grows.
+  if (cmd === 'agents') {
+    for (const [name, spec] of Object.entries(AGENTS)) {
+      console.log(`${name}\t${spec.cmd}\t${isInstalled(spec.cmd) ? 'yes' : 'no'}`);
+    }
     return;
   }
   if (!tmuxAvailable()) fail('tmux not found on PATH');

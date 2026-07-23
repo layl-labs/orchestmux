@@ -18,9 +18,23 @@ echo "── tmux ──";       command -v tmux >/dev/null && tmux -V || echo "
 echo "── node ──";       node --version 2>/dev/null || echo "MISSING: node"
 echo "── orchestmux ──"; command -v orchestmux >/dev/null && orchestmux version || echo "MISSING: orchestmux"
 echo "── agents ──"
-for b in claude codex kimi opencode gemini; do
-  p=$(command -v $b 2>/dev/null) && echo "  ok   $b -> $p" || echo "  none $b"
-done
+# Ask the CLI for its own roster so this never drifts as agents are added, and
+# so name != binary cases (e.g. cursor -> cursor-agent) resolve correctly.
+if orchestmux agents >/dev/null 2>&1; then
+  orchestmux agents | while IFS="$(printf '\t')" read -r name cmd installed; do
+    [ "$name" = "shell" ] && continue   # a bare shell for protocol testing, not a real agent
+    if [ "$installed" = "yes" ]; then
+      echo "  ok   $name -> $(command -v "$cmd" 2>/dev/null || echo "$cmd")"
+    else
+      echo "  none $name ($cmd)"
+    fi
+  done
+else
+  # Older CLI without `agents` (or CLI missing): fall back to the core set.
+  for b in claude codex kimi opencode gemini; do
+    p=$(command -v "$b" 2>/dev/null) && echo "  ok   $b -> $p" || echo "  none $b"
+  done
+fi
 echo "── state ──";      orchestmux ps 2>/dev/null | head -20 || true
 ```
 
@@ -54,8 +68,9 @@ Say plainly what is ready and what still blocks the user.
   will not start on older runtimes. Do not attempt to upgrade node for them.
 - **no agents found** — orchestmux provides no model access of its own; it
   drives the agent CLIs already installed and authenticated on this machine.
-  At least one of claude / codex / kimi / opencode / gemini is required, and
-  each runs on that person's own subscription.
+  At least one of the agents listed by `orchestmux agents` (claude, codex,
+  kimi, opencode, gemini, and more) is required, and each runs on that
+  person's own subscription.
 
 Finish by listing which agents are usable, since that is what determines what
 can actually be dispatched.

@@ -165,7 +165,9 @@ check a claim. Sweep once the user has the results, or when they ask.
 | `attach` | Attach to the tmux session (for the user) |
 | `kill --name <w>` / `down` | Remove one worker / tear down |
 
-Agents: `claude`, `codex`, `kimi`, `opencode`, `gemini`, `shell`.
+Agents: `claude`, `codex`, `kimi`, `opencode`, `gemini`, `qwen`, `agy`,
+`cursor`, `aider`, `amp`, `copilot`, `crush`, `droid`, `shell` — run
+`orchestmux agents` for the live list and which are installed.
 
 Note: `shell` is a bare shell for testing the protocol by hand (call `done`
 from inside the pane yourself). Never `dispatch` to it: the prompt arrives as
