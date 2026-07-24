@@ -23,14 +23,19 @@ export interface AgentSpec {
    */
   prompt: PromptMode;
   /** Agent blocks on a per-directory trust prompt that --yolo does not cover. */
-  preflightTrust?: 'codex';
+  preflightTrust?: 'codex' | 'claude' | 'agy' | 'gemini' | 'qwen';
 }
 
 export const AGENTS: Record<string, AgentSpec> = {
+  // --dangerously-skip-permissions clears tool-approval prompts but not the
+  // per-directory "Do you trust the files in this folder?" dialog; a worker in
+  // an untrusted directory sits at it forever. preflightTrust marks it accepted
+  // before the pane launches, the same way codex is pre-trusted.
   claude: {
     cmd: 'claude',
     autonomousArgs: ['--dangerously-skip-permissions'],
     prompt: { kind: 'positional' },
+    preflightTrust: 'claude',
   },
   codex: {
     cmd: 'codex',
@@ -41,24 +46,41 @@ export const AGENTS: Record<string, AgentSpec> = {
   // kimi and gemini run the prompt once and exit; their panes survive that
   // (remain-on-exit) and dispatch revives them, so they are reusable workers.
   kimi: { cmd: 'kimi', autonomousArgs: [], prompt: { kind: 'flag', flag: '-p' } },
-  opencode: { cmd: 'opencode', autonomousArgs: [], prompt: { kind: 'flag', flag: '--prompt' } },
+  // opencode's `run` subcommand is its headless mode; the bare command opens the
+  // TUI, which strands a worker in a tmux pane. --auto auto-approves permissions
+  // that are not explicitly denied — the same unattended contract as --yolo —
+  // covering the external-directory and webfetch prompts that `run` alone still
+  // stops on.
+  opencode: {
+    cmd: 'opencode',
+    baseArgs: ['run'],
+    autonomousArgs: ['--auto'],
+    prompt: { kind: 'positional' },
+  },
+  // Folder trust is off by default in gemini-cli, but if the user enabled it
+  // --yolo does not clear the gate; preflightTrust seeds it defensively.
   gemini: {
     cmd: 'gemini',
     autonomousArgs: ['--yolo'],
     prompt: { kind: 'flag', flag: '-p' },
+    preflightTrust: 'gemini',
   },
   // Google Antigravity CLI. `-p` runs headless (auto-approves tool calls on its
   // own); --dangerously-skip-permissions also clears command-execution prompts.
+  // Neither answers its first-launch workspace-trust gate, so seed that too.
   agy: {
     cmd: 'agy',
     autonomousArgs: ['--dangerously-skip-permissions'],
     prompt: { kind: 'flag', flag: '-p' },
+    preflightTrust: 'agy',
   },
-  // qwen-code is a gemini-cli fork and shares its surface exactly.
+  // qwen-code is a gemini-cli fork and shares its surface exactly, folder trust
+  // included.
   qwen: {
     cmd: 'qwen',
     autonomousArgs: ['--yolo'],
     prompt: { kind: 'flag', flag: '-p' },
+    preflightTrust: 'qwen',
   },
   // Cursor CLI. `-p` is the headless print switch (always needed); the prompt
   // is positional. `--force` auto-approves tool/command execution.

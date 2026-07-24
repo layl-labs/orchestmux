@@ -33,7 +33,7 @@ import {
   openTerminal,
 } from './tmux.js';
 import { AGENTS, agentNames, buildCommand, isInstalled } from './agents.js';
-import { isCodexTrusted, trustCodexDirectory } from './trust.js';
+import { ensureTrusted } from './trust.js';
 import { cliInvocation, dispatchPrompt } from './preamble.js';
 
 const DEFAULT_SESSION = process.env.ORCHESTMUX_SESSION ?? 'orchestmux';
@@ -242,12 +242,13 @@ function cmdSpawn(db: DatabaseSync, args: Args): void {
   }
   if (!isInstalled(AGENTS[agent]!.cmd)) fail(`agent binary "${AGENTS[agent]!.cmd}" not found on PATH`);
 
-  // Do this before the pane exists: an untrusted directory parks codex on a
-  // prompt --yolo cannot answer, and the worker would never read its task.
-  // Tied to --yolo because it writes to the user's codex config.
-  if (AGENTS[agent]!.preflightTrust === 'codex' && autonomous && !isCodexTrusted(cwd)) {
-    const t = trustCodexDirectory(cwd);
-    if (t.changed) console.log(`trusted ${t.path} in ~/.codex/config.toml (codex would block otherwise)`);
+  // Do this before the pane exists: an untrusted directory parks the agent on a
+  // trust prompt --yolo cannot answer, and the worker would never read its task.
+  // Tied to --yolo because it writes to the user's agent config.
+  const trust = AGENTS[agent]!.preflightTrust;
+  if (trust && autonomous) {
+    const t = ensureTrusted(trust, cwd);
+    if (t?.changed) console.log(`trusted ${t.path} in ${t.where} (${trust} would block otherwise)`);
   }
 
   if (!inPlace && !hasSession(s)) newSession(s, cwd);
