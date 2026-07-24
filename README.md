@@ -64,10 +64,13 @@ If you use Claude Code, take the plugin — it installs the CLI for you:
 ```
 /plugin marketplace add layl-labs/orchestmux
 /plugin install orchestmux@orchestmux
+/reload-plugins
+/orchestmux:doctor
 ```
 
-Then run `/orchestmux:doctor` once. It checks tmux, Node, and whichever agent
-CLIs you have, and offers to install the `orchestmux` CLI itself.
+`/reload-plugins` activates the commands the install just added. Then
+`/orchestmux:doctor` checks tmux, Node, and whichever agent CLIs you have, and
+offers to install the `orchestmux` CLI itself.
 
 Standalone CLI:
 
